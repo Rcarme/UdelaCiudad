@@ -103,7 +103,7 @@ graph TD
 1. Open the project folder in **Android Studio**.
 2. Let Gradle sync project dependencies.
 3. Select an emulator or connected physical Android device.
-4. Run the **pp** configuration in **debug** mode.
+4. Run the **app** configuration in **debug** mode.
 
 ### Default Connection Behavior
 - **Android Emulator**: Automatically pre-configured to connect to http://10.0.2.2:8000 (which routes to localhost:8000 on the computer running the server) with pre-seeded token student_secure_token_123.
