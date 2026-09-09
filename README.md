@@ -9,13 +9,13 @@ TgMon is a full-stack telemetry and container monitoring solution comprising:
 ## Architecture Overview
 
 `
-┌─────────────────────────────────┐        WebSocket / REST API        ┌──────────────────────────────────┐
-│      TgMon Android Client       │ ◄────────────────────────────────► │       TgMon Python Server        │
-│  - Jetpack Compose (Material 3) │   http://10.0.2.2:8000 (Emulator)  │  - FastAPI + Uvicorn             │
-│  - Coroutines & Flow            │   http://<LAN_IP>:8000 (Device)    │  - psutil system metrics         │
-│  - Room Local Cache             │                                    │  - Docker SDK integration        │
-│  - Glance Home Screen Widget    │   Header:                          │  - SQLite historical metrics     │
-└─────────────────────────────────┘   Authorization: Bearer <TOKEN>    └──────────────────────────────────┘
+ ┌─────────────────────────────────┐        WebSocket / REST API        ┌──────────────────────────────────┐
+ │      TgMon Android Client       │ ◄────────────────────────────────► │       TgMon Python Server        │
+ │  - Jetpack Compose (Material 3) │   http://10.0.2.2:8000 (Emulator)  │  - FastAPI + Uvicorn             │
+ │  - Coroutines & Flow            │   http://<LAN_IP>:8000 (Device)    │  - psutil system metrics         │
+ │  - Room Local Cache             │                                    │  - Docker SDK integration        │
+ │  - Glance Home Screen Widget    │   Header:                          │  - SQLite historical metrics     │
+ └─────────────────────────────────┘   Authorization: Bearer <TOKEN>    └──────────────────────────────────┘
 `
 
 ---
