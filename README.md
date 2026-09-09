@@ -52,13 +52,13 @@ graph TD
 ### Installation & Run
 
 1. Navigate to the server/ directory:
-   `ash
+   `
    cd server
    `
 
 2. Create and activate a Python virtual environment:
    - **Linux / macOS**:
-     `ash
+     `
      python3 -m venv venv
      source venv/bin/activate
      `
@@ -69,7 +69,7 @@ graph TD
      `
 
 3. Install required packages:
-   `ash
+   `
    pip install -r requirements.txt
    `
 
@@ -81,12 +81,12 @@ graph TD
    *(To customize, copy .env.example to .env.api and change the token).*
 
 5. Start the server:
-   `ash
+   `
    uvicorn main:app --host 0.0.0.0 --port 8000
    `
 
 6. Verify server is running:
-   `ash
+   `
    curl -H "Authorization: Bearer student_secure_token_123" http://localhost:8000/health
    `
 
