@@ -8,9 +8,10 @@ TgMon is a full-stack telemetry and container monitoring solution comprising:
 
 ## Architecture Overview
 
+```mermaid
 graph TD
     subgraph Cliente ["TgMon Android"]
-        A["Emulator (http://10.0.2.2:8000)"]
+        A["Emulator ([http://10.0.2.2:8000](http://10.0.2.2:8000))"]
         B["Device (http://LAN_IP:8000)"]
         C["Jetpack Compose (Material 3)"]
         D["Coroutines & Flow"]
@@ -29,7 +30,7 @@ graph TD
     G --> I
     C --> D
     E --> F
-
+```
 ---
 
 ## 1. Server Setup (Backend)
