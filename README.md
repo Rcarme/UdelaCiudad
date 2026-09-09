@@ -10,26 +10,36 @@ TgMon is a full-stack telemetry and container monitoring solution comprising:
 
 ```mermaid
 graph TD
-    subgraph Cliente ["TgMon Android"]
-        A["Emulator ([http://10.0.2.2:8000](http://10.0.2.2:8000))"]
-        B["Device (http://LAN_IP:8000)"]
-        C["Jetpack Compose (Material 3)"]
-        D["Coroutines & Flow"]
-        E["Glance Home Screen Widget"]
-        F["Room Local Cache"]
+    subgraph Cliente ["TgMon Android App"]
+        direction TB
+        subgraph Presentacion ["Capa de Presentación"]
+            UI["Jetpack Compose (Material 3)<br/>& Coroutines / Flow"]
+            Widget["Glance Home Screen Widget"]
+        end
+
+        subgraph Datos ["Capa de Datos / Cache"]
+            Room["Room Local Cache<br/>(SQLite historical metrics)"]
+        end
+
+        subgraph Red ["Capa de Red / Entorno"]
+            Env["Target Endpoint:<br/>• Emulator: 10.0.2.2:8000<br/>• Physical Device: LAN_IP:8000"]
+        end
+
+        UI --> Room
+        Widget --> Room
+        Env -.->|"WebSocket / REST API<br/>Bearer Token"| UI
     end
 
     subgraph Servidor ["TgMon Python Server"]
-        G["FastAPI + Uvicorn"]
-        H["psutil system metrics"]
-        I["SQLite historical metrics"]
+        FastAPI["FastAPI + Uvicorn"]
+        Psutil["psutil system metrics"]
+        DB["SQLite historical metrics"]
+        
+        FastAPI --> Psutil
+        FastAPI --> DB
     end
 
-    A & B -->|"WebSocket / REST API<br/>Authorization: Bearer <TOKEN>"| G
-    G --> H
-    G --> I
-    C --> D
-    E --> F
+    UI & Widget -.->|"HTTP / WS Requests"| FastAPI
 ```
 ---
 
