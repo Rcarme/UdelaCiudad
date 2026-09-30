@@ -1,20 +1,35 @@
 package com.tgmon.app.presentation.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tgmon.app.data.models.DiskInfo
+import kotlinx.coroutines.launch
+import java.util.Locale
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DiskUsageCard(
     usedGb: Double,
@@ -23,11 +38,30 @@ fun DiskUsageCard(
     disks: List<DiskInfo>? = null,
     modifier: Modifier = Modifier
 ) {
-    val displayDisks = if (!disks.isNullOrEmpty()) {
-        disks.filter { it.totalGb > 0.0 }
-    } else {
-        emptyList()
+    val displayDisks = remember(disks, usedGb, freeGb, totalGb) {
+        val valid = disks?.filter { it.totalGb > 0.0 }
+        if (!valid.isNullOrEmpty()) {
+            valid
+        } else {
+            val effTotal = totalGb ?: (usedGb + freeGb)
+            val effPercent = if (effTotal > 0) (usedGb / effTotal) * 100.0 else 0.0
+            listOf(
+                DiskInfo(
+                    name = "System",
+                    device = "System",
+                    mountpoint = "/",
+                    fstype = "",
+                    totalGb = effTotal,
+                    usedGb = usedGb,
+                    freeGb = freeGb,
+                    percent = effPercent
+                )
+            )
+        }
     }
+
+    val pagerState = rememberPagerState(pageCount = { displayDisks.size })
+    val coroutineScope = rememberCoroutineScope()
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -36,7 +70,7 @@ fun DiskUsageCard(
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -52,51 +86,95 @@ fun DiskUsageCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (displayDisks.size > 1) "STORAGE (${displayDisks.size} DRIVES)" else "STORAGE",
+                        text = if (displayDisks.size > 1) {
+                            "STORAGE (${pagerState.currentPage + 1}/${displayDisks.size})"
+                        } else {
+                            "STORAGE"
+                        },
                         color = Color(0xFFAAAAAA),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
                     )
                 }
+
+                if (displayDisks.size > 1) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (pagerState.currentPage > 0) {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                                    }
+                                }
+                            },
+                            enabled = pagerState.currentPage > 0,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = "Previous disk",
+                                tint = if (pagerState.currentPage > 0) Color.White else Color(0x33FFFFFF),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // Indicator dots
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        ) {
+                            repeat(displayDisks.size) { index ->
+                                val isSelected = pagerState.currentPage == index
+                                Box(
+                                    modifier = Modifier
+                                        .size(if (isSelected) 6.dp else 4.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isSelected) Color(0xFF00FF88) else Color(0x44FFFFFF))
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = {
+                                if (pagerState.currentPage < displayDisks.size - 1) {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                                    }
+                                }
+                            },
+                            enabled = pagerState.currentPage < displayDisks.size - 1,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = "Next disk",
+                                tint = if (pagerState.currentPage < displayDisks.size - 1) Color.White else Color(0x33FFFFFF),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
             }
 
-            if (displayDisks.size > 1) {
-                displayDisks.forEachIndexed { index, disk ->
-                    if (index > 0) {
-                        Spacer(modifier = Modifier.height(14.dp))
-                        HorizontalDivider(
-                            modifier = Modifier.fillMaxWidth(),
-                            color = Color(0x1FFFFFFF),
-                            thickness = 1.dp
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                    } else {
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
-                    SingleDiskSection(
-                        label = disk.device.ifBlank { disk.mountpoint },
-                        fstype = disk.fstype,
-                        usedGb = disk.usedGb,
-                        freeGb = disk.freeGb,
-                        totalGb = disk.totalGb,
-                        percent = disk.percent
-                    )
-                }
-            } else {
-                Spacer(modifier = Modifier.height(12.dp))
-                val singleDisk = displayDisks.firstOrNull()
-                val effectiveUsed = singleDisk?.usedGb ?: usedGb
-                val effectiveFree = singleDisk?.freeGb ?: freeGb
-                val effectiveTotal = singleDisk?.totalGb ?: (totalGb ?: (usedGb + freeGb))
-                val effectivePercent = singleDisk?.percent ?: if (effectiveTotal > 0) (effectiveUsed / effectiveTotal) * 100.0 else 0.0
+            Spacer(modifier = Modifier.height(8.dp))
+
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxWidth()
+            ) { page ->
+                val disk = displayDisks[page]
                 SingleDiskSection(
-                    label = singleDisk?.device?.ifBlank { null } ?: singleDisk?.mountpoint,
-                    fstype = singleDisk?.fstype ?: "",
-                    usedGb = effectiveUsed,
-                    freeGb = effectiveFree,
-                    totalGb = effectiveTotal,
-                    percent = effectivePercent
+                    label = disk.displayName,
+                    fstype = disk.fstype,
+                    usedGb = disk.usedGb,
+                    freeGb = disk.freeGb,
+                    totalGb = disk.totalGb,
+                    percent = disk.percent
                 )
             }
         }
@@ -105,7 +183,7 @@ fun DiskUsageCard(
 
 @Composable
 private fun SingleDiskSection(
-    label: String?,
+    label: String,
     fstype: String,
     usedGb: Double,
     freeGb: Double,
@@ -120,62 +198,54 @@ private fun SingleDiskSection(
         else -> Color(0xFF00FF88) // Cyber Green
     }
 
-    if (!label.isNullOrBlank()) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f, fill = false)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = label,
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (fstype.isNotBlank()) {
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = label,
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
+                    text = "[$fstype]",
+                    color = Color(0xFF888888),
+                    fontSize = 11.sp
                 )
-                if (fstype.isNotBlank()) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "[$fstype]",
-                        color = Color(0xFF888888),
-                        fontSize = 11.sp
-                    )
-                }
             }
-            Text(
-                text = "${String.format("%.1f", progress * 100)}%",
-                color = barColor,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-    } else {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            Text(
-                text = "${String.format("%.1f", progress * 100)}%",
-                color = barColor,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "${String.format(Locale.US, "%.1f", progress * 100)}%",
+            color = barColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 
+    Spacer(modifier = Modifier.height(6.dp))
+
     LinearProgressIndicator(
-        progress = progress,
+        progress = { progress },
         modifier = Modifier
             .fillMaxWidth()
-            .height(8.dp),
+            .height(6.dp),
         color = barColor,
         trackColor = Color(0x22FFFFFF),
-        strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+        strokeCap = StrokeCap.Round
     )
 
-    Spacer(modifier = Modifier.height(10.dp))
+    Spacer(modifier = Modifier.height(8.dp))
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -183,16 +253,15 @@ private fun SingleDiskSection(
     ) {
         Column {
             Text("Used", color = Color(0xFFAAAAAA), fontSize = 10.sp)
-            Text("${String.format("%.1f", usedGb)} GB", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("${String.format(Locale.US, "%.1f", usedGb)} GB", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Free", color = Color(0xFFAAAAAA), fontSize = 10.sp)
-            Text("${String.format("%.1f", freeGb)} GB", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("${String.format(Locale.US, "%.1f", freeGb)} GB", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
         Column(horizontalAlignment = Alignment.End) {
             Text("Total", color = Color(0xFFAAAAAA), fontSize = 10.sp)
-            Text("${String.format("%.1f", totalGb)} GB", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text("${String.format(Locale.US, "%.1f", totalGb)} GB", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
-

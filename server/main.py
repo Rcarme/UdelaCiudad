@@ -119,10 +119,18 @@ def get_disks_data() -> list[dict]:
     ]
     for base in auto_locations:
         if os.path.isdir(base):
+            candidate_mounts.append((base, base, "auto-mount"))
             try:
                 for entry in os.scandir(base):
                     if entry.is_dir():
                         candidate_mounts.append((entry.path, entry.path, "auto-mount"))
+                        # Also scan 2nd level (e.g. /media/username/DriveName or /run/media/username/DriveName)
+                        try:
+                            for subentry in os.scandir(entry.path):
+                                if subentry.is_dir():
+                                    candidate_mounts.append((subentry.path, subentry.path, "auto-mount"))
+                        except Exception:
+                            pass
             except Exception:
                 pass
 
@@ -137,6 +145,13 @@ def get_disks_data() -> list[dict]:
     if not any(m[1].rstrip("\\/").upper() == root_path.rstrip("\\/").upper() for m in candidate_mounts):
         candidate_mounts.insert(0, (root_path, root_path, ""))
 
+    root_sig = None
+    try:
+        ru = psutil.disk_usage(root_path)
+        root_sig = (round(ru.total / 1024**3, 1), round(ru.used / 1024**3, 1))
+    except Exception:
+        pass
+
     seen_signatures = set()
     for device, mount, fstype in candidate_mounts:
         norm_key = mount.rstrip("\\/").upper() if os.name == 'nt' else mount.rstrip("/")
@@ -146,13 +161,29 @@ def get_disks_data() -> list[dict]:
             u = psutil.disk_usage(mount)
             if u.total == 0:
                 continue
-            # Deduplicate drives that map to the same underlying filesystem
+
+            is_root = (norm_key == root_path.rstrip("\\/").upper() or norm_key == "" or norm_key == "/")
             sig = (round(u.total / 1024**3, 1), round(u.used / 1024**3, 1))
-            if sig in seen_signatures and norm_key != root_path.rstrip("\\/").upper() and norm_key != "/":
+
+            # If not root, but has exact same total & used as root, it's just an unmounted directory on root
+            if not is_root and root_sig and sig == root_sig:
                 continue
+
+            # Deduplicate multiple mount points pointing to the same physical filesystem
+            if sig in seen_signatures and not is_root:
+                continue
+
             seen.add(norm_key)
             seen_signatures.add(sig)
+
+            # Friendly name for the disk
+            if is_root:
+                drive_name = "System"
+            else:
+                drive_name = os.path.basename(mount.rstrip("/\\")) or mount
+
             disks.append({
+                "name": drive_name,
                 "device": device or mount,
                 "mountpoint": mount,
                 "fstype": fstype,

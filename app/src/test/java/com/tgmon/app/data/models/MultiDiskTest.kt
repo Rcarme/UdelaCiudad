@@ -112,4 +112,46 @@ class MultiDiskTest {
         val message = "Disco ($label): ${String.format(java.util.Locale.US, "%.1f", highestDisk.percent)}%"
         assertEquals("Disco (D:\\): 92.5%", message)
     }
+
+    @Test
+    fun testDiskInfo_displayNameFormatting() {
+        val rootDisk = DiskInfo(device = "/dev/sda1", mountpoint = "/", totalGb = 500.0)
+        assertEquals("System (/)", rootDisk.displayName)
+
+        val winRootDisk = DiskInfo(device = "C:\\", mountpoint = "C:\\", totalGb = 250.0)
+        assertEquals("System (C:\\)", winRootDisk.displayName)
+
+        val externalNamedDisk = DiskInfo(name = "MyPassport", device = "/dev/sdb1", mountpoint = "/media/user/MyPassport", totalGb = 1000.0)
+        assertEquals("MyPassport", externalNamedDisk.displayName)
+
+        val externalUnamedDisk = DiskInfo(device = "/dev/sdc1", mountpoint = "/mnt/backup", totalGb = 2000.0)
+        assertEquals("/mnt/backup (sdc1)", externalUnamedDisk.displayName)
+    }
+
+    @Test
+    fun testOverview_top4ContainersSorting() {
+        val containers = listOf(
+            DockerContainer(id = "1", name = "idle-1", status = "running", cpuPercent = 0.1, memoryPercent = 2.0),
+            DockerContainer(id = "2", name = "heavy-cpu", status = "running", cpuPercent = 45.0, memoryPercent = 10.0),
+            DockerContainer(id = "3", name = "stopped-heavy", status = "exited", cpuPercent = 90.0, memoryPercent = 80.0),
+            DockerContainer(id = "4", name = "heavy-ram", status = "running", cpuPercent = 5.0, memoryPercent = 60.0),
+            DockerContainer(id = "5", name = "medium-active", status = "running", cpuPercent = 15.0, memoryPercent = 15.0),
+            DockerContainer(id = "6", name = "low-active", status = "running", cpuPercent = 1.0, memoryPercent = 3.0)
+        )
+
+        val top4 = containers
+            .sortedWith(
+                compareByDescending<DockerContainer> { it.isRunning }
+                    .thenByDescending { it.cpuPercent + it.memoryPercent }
+            )
+            .take(4)
+
+        assertEquals(4, top4.size)
+        // All 4 should be running containers (running takes precedence over stopped, even if stopped had high numbers)
+        assertTrue(top4.all { it.isRunning })
+        assertEquals("heavy-ram", top4[0].name) // 5.0 + 60.0 = 65.0
+        assertEquals("heavy-cpu", top4[1].name) // 45.0 + 10.0 = 55.0
+        assertEquals("medium-active", top4[2].name) // 15.0 + 15.0 = 30.0
+        assertEquals("low-active", top4[3].name) // 1.0 + 3.0 = 4.0
+    }
 }

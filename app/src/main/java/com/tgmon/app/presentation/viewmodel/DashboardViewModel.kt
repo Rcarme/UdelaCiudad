@@ -191,6 +191,7 @@ class DashboardViewModel @Inject constructor(
     private var lastPingTime = 0L
     private val pingInterval = 25_000L
     private var pingJob: Job? = null
+    private var lastSavedMetricTime = 0L
 
     private val wsMutex = Mutex()
     private var wsState = WebSocketState.DISCONNECTED
@@ -297,6 +298,19 @@ class DashboardViewModel @Inject constructor(
 
     fun onTabSelected(index: Int) {
         _selectedTab.value = index
+        if (index == 1) {
+            syncHistory()
+        }
+    }
+
+    fun syncHistory() {
+        viewModelScope.launch {
+            try {
+                repository.syncHistoryFromServer(24)
+            } catch (e: Exception) {
+                android.util.Log.w("TgMon", "History sync failed: ${e.message}")
+            }
+        }
     }
 
     private fun loadWithCacheFirst() {
@@ -340,8 +354,16 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             val oneWeekAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
             metricCache.deleteOldMetrics(oneWeekAgo)
-            val metrics = metricCache.getLastNMetricsFlow(1000)?.first() ?: emptyList()
-            _historicalMetrics.value = metrics.reversed()
+            
+            // Sincronizar historial con el backend
+            launch {
+                syncHistory()
+            }
+            
+            // Observar reactivamente el Flow de métricas de Room
+            metricCache.getLastNMetricsFlow(1000)?.collect { metrics ->
+                _historicalMetrics.value = metrics.reversed()
+            }
         }
     }
     
@@ -453,6 +475,11 @@ class DashboardViewModel @Inject constructor(
     }
     
     private fun saveMetricHistory(response: HealthResponse) {
+        val now = System.currentTimeMillis()
+        if (now - lastSavedMetricTime < 15_000L) {
+            return
+        }
+        lastSavedMetricTime = now
         viewModelScope.launch {
             val defaultDiskTotal = response.diskTotalGb ?: (response.diskUsedGb + response.diskFreeGb)
             val defaultDiskPercent = if (defaultDiskTotal > 0) {

@@ -39,6 +39,7 @@ data class HealthResponse(
 )
 
 data class DiskInfo(
+    @SerializedName("name") val name: String? = null,
     @SerializedName("device") val device: String = "",
     @SerializedName("mountpoint") val mountpoint: String = "",
     @SerializedName("fstype") val fstype: String = "",
@@ -46,7 +47,20 @@ data class DiskInfo(
     @SerializedName("used_gb") val usedGb: Double = 0.0,
     @SerializedName("free_gb") val freeGb: Double = 0.0,
     @SerializedName("percent") val percent: Double = 0.0
-)
+) {
+    val displayName: String
+        get() = when {
+            !name.isNullOrBlank() && name != "System" -> name
+            mountpoint == "/" || mountpoint.equals("c:\\", ignoreCase = true) -> "System ($mountpoint)"
+            device.isNotBlank() && mountpoint.isNotBlank() && device != mountpoint -> {
+                val devShort = device.substringAfterLast('/')
+                "$mountpoint ($devShort)"
+            }
+            mountpoint.isNotBlank() -> mountpoint
+            device.isNotBlank() -> device
+            else -> "Storage"
+        }
+}
 
 data class DockerSummary(
     @SerializedName("total")

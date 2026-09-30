@@ -12,6 +12,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # 3. Lectura de tus composes para la función parse_docker_compose()
       - /home/comstock/docker:/home/comstock/docker:ro
+      # 4. Puntos de montaje para almacenamiento externo/secundario (discos USB, SATA, etc.)
+      - /media:/media:ro
+      - /mnt:/mnt:ro
+      - /run/media:/run/media:ro
     environment:
       - TZ=America/Argentina/Buenos_Aires
       - COMPOSE_PATH=/home/comstock/docker/media-stack/docker-compose.yml

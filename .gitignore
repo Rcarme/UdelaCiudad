@@ -20,3 +20,10 @@ server/venv/
 server/__pycache__/
 server/*.db
 server/*.pyc
+
+# Binaries and archives
+*.apk
+*.tar.gz
+*.zip
+deploy_shodan/
+

@@ -157,14 +157,14 @@ private fun DrawScope.drawInteractiveChart(
     textMeasurer: TextMeasurer,
     textColor: Color
 ) {
-    if (values.size < 2) return
+    if (values.isEmpty()) return
 
     val width = size.width
     val height = size.height
     val padding = 24f
 
     val valueRange = maxValue - minValue
-    if (valueRange == 0.0) {
+    if (values.size == 1 || valueRange == 0.0) {
         val y = height / 2f
         drawLine(
             color = color,

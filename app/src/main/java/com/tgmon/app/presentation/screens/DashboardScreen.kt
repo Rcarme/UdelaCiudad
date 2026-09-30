@@ -23,6 +23,9 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.material.icons.filled.Refresh
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
@@ -41,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.tgmon.app.data.models.DockerContainer
 import com.tgmon.app.data.preferences.PreferencesManager
@@ -78,6 +82,7 @@ fun DashboardScreen(
     val servers by viewModel.servers.collectAsState()
     var showLogoutDialog by rememberSaveable { mutableStateOf(false) }
     var showServerMenu by rememberSaveable { mutableStateOf(false) }
+    var showOptionsMenu by rememberSaveable { mutableStateOf(false) }
 
     val currentServer by produceState<ServerConfig?>(
         initialValue = preferencesManager.getDefaultServer(),
@@ -133,25 +138,21 @@ fun DashboardScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text("TGMON", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                        currentServer?.let { server ->
-                            Text(
-                                text = server.name,
-                                color = Color.Gray,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
+                    Text(
+                        text = "TGMON",
+                        color = Color.White,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 20.sp,
+                        letterSpacing = 1.5.sp,
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
                     titleContentColor = Color.White
                 ),
                 actions = {
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = Color.White)
-                    }
                     IconButton(onClick = onServersClick) {
                         Icon(Icons.Filled.Dns, contentDescription = "Servers", tint = Color.White)
                     }
@@ -161,8 +162,41 @@ fun DashboardScreen(
                     IconButton(onClick = onAlertsClick) {
                         Icon(Icons.Filled.Notifications, contentDescription = "Alerts", tint = Color.White)
                     }
-                    IconButton(onClick = { showLogoutDialog = true }) {
-                        Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout", tint = Color.White)
+                    Box {
+                        IconButton(onClick = { showOptionsMenu = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "More options", tint = Color.White)
+                        }
+                        DropdownMenu(
+                            expanded = showOptionsMenu,
+                            onDismissRequest = { showOptionsMenu = false },
+                            containerColor = Color(0xFF1E2235)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Settings", color = Color.White) },
+                                leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null, tint = Color.White) },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    onSettingsClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Full Charts", color = Color.White) },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ShowChart, contentDescription = null, tint = Color.White) },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    onChartsClick()
+                                }
+                            )
+                            HorizontalDivider(color = Color(0x33FFFFFF))
+                            DropdownMenuItem(
+                                text = { Text("Logout", color = Color(0xFFFF5252)) },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, tint = Color(0xFFFF5252)) },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    showLogoutDialog = true
+                                }
+                            )
+                        }
                     }
                 }
             )
@@ -209,7 +243,7 @@ fun DashboardScreen(
                     ) {
                         when (uiState.selectedTab) {
                             0 -> OverviewTab(uiState, preferencesManager, currentServer?.name, onContainersClick)
-                            1 -> ChartsTab(historicalMetrics)
+                            1 -> ChartsTab(historicalMetrics, onSyncHistory = { viewModel.syncHistory() })
                         }
                     }
                 }
@@ -333,13 +367,21 @@ fun OverviewTab(
     onContainersClick: () -> Unit
 ) {
     val context = LocalContext.current
-    // N97: remember chunked list to avoid O(n) reallocation on every recomposition.
-    // Chunking 2-per-row for grid; stable keys via first().id prevent LazyColumn re-measure thrash on low-CPU.
-    val containerChunks = remember(uiState.containers) { uiState.containers.chunked(2) }
+    // N97: Top 4 most used containers (running first, highest CPU+RAM usage)
+    val topContainers = remember(uiState.containers) {
+        uiState.containers
+            .sortedWith(
+                compareByDescending<DockerContainer> { it.isRunning }
+                    .thenByDescending { it.cpuPercent + it.memoryPercent }
+            )
+            .take(4)
+    }
+    val topContainerChunks = remember(topContainers) { topContainers.chunked(2) }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         if (uiState.error != null) {
             item {
@@ -348,10 +390,10 @@ fun OverviewTab(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.Warning, contentDescription = "Error", tint = Color(0xFFFF4444))
+                        Icon(Icons.Filled.Warning, contentDescription = "Error", tint = Color(0xFFFF4444), modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = uiState.error, color = Color(0xFFFF4444), fontSize = 12.sp)
                     }
@@ -383,10 +425,10 @@ fun OverviewTab(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = displayName,
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = MaterialTheme.typography.titleLarge,
                         color = Color.White,
-                        fontWeight = FontWeight.Light,
-                        letterSpacing = 4.sp
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 2.sp
                     )
                     Text(
                         text = "Status: ${if (uiState.isOffline) "Offline" else "Online"} • ${uiState.lastUpdateTime}$hostSuffix",
@@ -394,25 +436,27 @@ fun OverviewTab(
                         color = if (uiState.isOffline) Color(0xFFFF4444) else Color(0xFF00FF88)
                     )
                 }
-                IconButton(onClick = {
-                    val serverUrl = preferencesManager.getServerUrl() ?: return@IconButton
-                    val host = serverUrl
-                        .substringAfter("://")
-                        .substringBefore(":")
-                        .substringBefore("/")
-                    if (host.isBlank()) return@IconButton
-                    // Use same scheme as configured server when possible (https vs http)
-                    val scheme = if (serverUrl.startsWith("https", ignoreCase = true)) "https" else "http"
-                    val homepageUrl = "${scheme}://$host:3000"
-                    try {
-                        android.util.Log.d("TgMon", "Opening homepage: $homepageUrl (from serverUrl=$serverUrl)")
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(homepageUrl))
-                        context.startActivity(intent)
-                    } catch (e: Exception) {
-                        android.util.Log.w("TgMon", "Failed to open homepage: ${e.message}")
-                    }
-                }) {
-                    Icon(Icons.Filled.Language, contentDescription = "Open Server Homepage", tint = Color.White)
+                IconButton(
+                    onClick = {
+                        val serverUrl = preferencesManager.getServerUrl() ?: return@IconButton
+                        val host = serverUrl
+                            .substringAfter("://")
+                            .substringBefore(":")
+                            .substringBefore("/")
+                        if (host.isBlank()) return@IconButton
+                        val scheme = if (serverUrl.startsWith("https", ignoreCase = true)) "https" else "http"
+                        val homepageUrl = "${scheme}://$host:3000"
+                        try {
+                            android.util.Log.d("TgMon", "Opening homepage: $homepageUrl (from serverUrl=$serverUrl)")
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(homepageUrl))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            android.util.Log.w("TgMon", "Failed to open homepage: ${e.message}")
+                        }
+                    },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(Icons.Filled.Language, contentDescription = "Open Server Homepage", tint = Color.White, modifier = Modifier.size(20.dp))
                 }
             }
         }
@@ -420,8 +464,8 @@ fun OverviewTab(
         item {
             uiState.health?.let { h ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatGlassCard(title = "CPU", value = "${String.format("%.1f", h.cpuPercent)}%", modifier = Modifier.weight(1f))
-                    StatGlassCard(title = "RAM", value = "${String.format("%.1f", h.memoryPercent)}%", modifier = Modifier.weight(1f))
+                    StatGlassCard(title = "CPU", value = "${String.format(java.util.Locale.US, "%.1f", h.cpuPercent)}%", modifier = Modifier.weight(1f))
+                    StatGlassCard(title = "RAM", value = "${String.format(java.util.Locale.US, "%.1f", h.memoryPercent)}%", modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -439,17 +483,15 @@ fun OverviewTab(
 
         item {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 0.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 uiState.uptime?.let { uptime ->
                     AssistChip(
                         onClick = {},
-                        label = { Text(uptime) },
+                        label = { Text(uptime, fontSize = 11.sp) },
                         leadingIcon = {
-                            Icon(Icons.Filled.Timer, null, Modifier.size(16.dp))
+                            Icon(Icons.Filled.Timer, null, Modifier.size(14.dp))
                         },
                         modifier = Modifier.weight(1f)
                     )
@@ -457,9 +499,9 @@ fun OverviewTab(
                 uiState.loadAvg?.let { loadAvg ->
                     AssistChip(
                         onClick = {},
-                        label = { Text(loadAvg) },
+                        label = { Text(loadAvg, fontSize = 11.sp) },
                         leadingIcon = {
-                            Icon(Icons.Filled.Speed, null, Modifier.size(16.dp))
+                            Icon(Icons.Filled.Speed, null, Modifier.size(14.dp))
                         },
                         modifier = Modifier.weight(1f)
                     )
@@ -468,23 +510,41 @@ fun OverviewTab(
         }
 
         item {
-            Text(
-                text = "Services & Containers",
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Top Active Services",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (uiState.containers.isNotEmpty()) {
+                    TextButton(
+                        onClick = onContainersClick,
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                    ) {
+                        Text(
+                            text = "View all (${uiState.containers.size}) →",
+                            color = Color(0xFF6C63FF),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
         }
 
-        if (uiState.containers.isNotEmpty()) {
+        if (topContainers.isNotEmpty()) {
             items(
-                items = containerChunks,
+                items = topContainerChunks,
                 key = { it.first().id }
             ) { rowContainers ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     rowContainers.forEach { container ->
                         Box(modifier = Modifier.weight(1f)) {
@@ -496,38 +556,25 @@ fun OverviewTab(
                     }
                 }
             }
-
-            if (uiState.containers.size > 6) {
-                item {
-                    TextButton(
-                        onClick = onContainersClick,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            "Show all containers (${uiState.containers.size})",
-                            color = Color(0xFF6C63FF)
-                        )
-                    }
-                }
-            }
         } else if (!uiState.isLoading) {
             item {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("No services detected.", color = Color(0xFFAAAAAA), fontSize = 14.sp)
-                    Text("Make sure Docker is running and containers are active.", color = Color.Gray, fontSize = 12.sp)
+                    Text("No services detected.", color = Color(0xFFAAAAAA), fontSize = 13.sp)
+                    Text("Make sure Docker is running and containers are active.", color = Color.Gray, fontSize = 11.sp)
                 }
             }
         }
-        
-        item { Spacer(modifier = Modifier.height(32.dp)) }
     }
 }
 
 @Composable
-fun ChartsTab(metrics: List<com.tgmon.app.data.models.MetricHistory>) {
+fun ChartsTab(
+    metrics: List<com.tgmon.app.data.models.MetricHistory>,
+    onSyncHistory: () -> Unit = {}
+) {
     // N97: hoisted lambdas avoid reallocating Function on each recomposition;
     // LineChart is skippable when valueExtractor is stable — lowers CPU on low-resource device.
     val cpuExtractor = remember { { m: com.tgmon.app.data.models.MetricHistory -> m.cpuPercent } }
@@ -539,51 +586,103 @@ fun ChartsTab(metrics: List<com.tgmon.app.data.models.MetricHistory>) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {
-            Text(
-                "Performance History",
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        "Performance History",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        if (metrics.isNotEmpty()) "${metrics.size} data points recorded" else "Waiting for data points...",
+                        color = Color.Gray,
+                        fontSize = 11.sp
+                    )
+                }
+                IconButton(onClick = onSyncHistory) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Sync History", tint = Color(0xFF6C63FF))
+                }
+            }
         }
         
-        item {
-            LineChart(
-                title = "CPU Usage (%)",
-                metrics = metrics,
-                valueExtractor = cpuExtractor,
-                color = Color(0xFF6C63FF)
-            )
-        }
+        if (metrics.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0x1AFFFFFF)),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            "No Historical Metrics Yet",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            "Data points are saved periodically. Tap below to sync recent history from the server.",
+                            color = Color.Gray,
+                            fontSize = 13.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Button(
+                            onClick = onSyncHistory,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6C63FF))
+                        ) {
+                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Sync with Server")
+                        }
+                    }
+                }
+            }
+        } else {
+            item {
+                LineChart(
+                    title = "CPU Usage (%)",
+                    metrics = metrics,
+                    valueExtractor = cpuExtractor,
+                    color = Color(0xFF6C63FF)
+                )
+            }
 
-        item {
-            LineChart(
-                title = "Memory Usage (%)",
-                metrics = metrics,
-                valueExtractor = memoryExtractor,
-                color = Color(0xFF00FFFF)
-            )
-        }
+            item {
+                LineChart(
+                    title = "Memory Usage (%)",
+                    metrics = metrics,
+                    valueExtractor = memoryExtractor,
+                    color = Color(0xFF00FFFF)
+                )
+            }
 
-        item {
-            LineChart(
-                title = "Disk Usage (%)",
-                metrics = metrics,
-                valueExtractor = diskExtractor,
-                unit = "%",
-                color = Color(0xFFFF5722),
-                maxValue = 100.0
-            )
-        }
+            item {
+                LineChart(
+                    title = "Disk Usage (%)",
+                    metrics = metrics,
+                    valueExtractor = diskExtractor,
+                    unit = "%",
+                    color = Color(0xFFFF5722),
+                    maxValue = 100.0
+                )
+            }
 
-        item {
-            Text(
-                "Charts based on the last 1000 recorded data points.",
-                color = Color.Gray,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(top = 16.dp)
-            )
+            item {
+                Text(
+                    "Charts based on the last ${metrics.size} recorded data points.",
+                    color = Color.Gray,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(top = 16.dp)
+                )
+            }
         }
     }
 }
@@ -612,13 +711,13 @@ fun StatGlassCard(title: String, value: String, modifier: Modifier = Modifier) {
 @Composable
 fun ServiceGlassCard(container: DockerContainer) {
     Card(
-        modifier = Modifier.fillMaxWidth().height(64.dp),
+        modifier = Modifier.fillMaxWidth().height(52.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0x2A1C1635)),
         border = BorderStroke(1.dp, Brush.linearGradient(listOf(Color(0x55FFFFFF), Color(0x1AFFFFFF)))),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(12.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -635,11 +734,13 @@ fun ServiceGlassCard(container: DockerContainer) {
                 Text(
                     text = container.displayName,
                     color = Color.White,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
+            Spacer(modifier = Modifier.width(6.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0x33000000)),
                 shape = RoundedCornerShape(4.dp)
