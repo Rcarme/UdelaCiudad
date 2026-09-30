@@ -30,6 +30,7 @@ logger = logging.getLogger("tgmon")
 SERVER_VERSION = "2.0.0"
 API_VERSION_HEADER = "X-API-Version"
 
+SERVER_START_TIME: float = time.time()
 _cpu_initialized = False
 _event_debounce: dict[str, float] = {}
 
