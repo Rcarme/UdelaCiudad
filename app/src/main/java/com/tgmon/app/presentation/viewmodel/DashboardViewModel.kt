@@ -670,8 +670,10 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
     fun switchServer(serverId: String) {
+        if (serverId.isNotBlank()) {
+            preferencesManager.setDefaultServerId(serverId)
+        }
         autoRefreshJob?.cancel()
         wsReconnectJob?.cancel()
         pingJob?.cancel()

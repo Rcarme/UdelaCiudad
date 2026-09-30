@@ -9,6 +9,7 @@ import com.tgmon.app.data.models.RestartResponse
 import com.tgmon.app.data.models.ContainerDetails
 import com.tgmon.app.data.models.MetricHistoryDto
 import com.tgmon.app.data.models.ServiceUrlsResponse
+import com.tgmon.app.data.models.VerifyAuthResponse
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.DELETE
@@ -82,7 +83,7 @@ interface TgMonApi {
     ): okhttp3.ResponseBody
 
     @GET("/auth/verify")
-    suspend fun verifyAuth(): Map<String, Boolean>
+    suspend fun verifyAuth(): VerifyAuthResponse
 
     @POST("/auth/invalidate")
     suspend fun invalidateAuth(): Map<String, Any>

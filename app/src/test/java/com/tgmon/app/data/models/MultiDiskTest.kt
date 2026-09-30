@@ -109,7 +109,7 @@ class MultiDiskTest {
         assertTrue(highestDisk.percent > threshold)
 
         val label = highestDisk.device.takeIf { it.isNotBlank() } ?: highestDisk.mountpoint
-        val message = "Disco ($label): ${String.format("%.1f", highestDisk.percent)}%"
+        val message = "Disco ($label): ${String.format(java.util.Locale.US, "%.1f", highestDisk.percent)}%"
         assertEquals("Disco (D:\\): 92.5%", message)
     }
 }

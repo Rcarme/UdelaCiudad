@@ -64,4 +64,55 @@ class DockerContainerTest {
         val diskPercent = MetricHistory.calculateDiskPercent(diskUsedGb, diskTotal)
         assertEquals(12.5, diskPercent, 0.001)
     }
+
+    @Test
+    fun testDockerContainer_fullPropertiesDeserialization() {
+        val json = """
+            {
+                "id": "1234567890abcdef",
+                "name": "nginx-proxy",
+                "status": "running",
+                "image": "nginx:latest",
+                "cpu_percent": 5.4,
+                "memory_mb": 128.0,
+                "memory_percent": 1.25,
+                "uptime_seconds": 86400,
+                "health_status": "healthy",
+                "ports": [
+                    {
+                        "host_port": 8080,
+                        "container_port": 80,
+                        "protocol": "tcp"
+                    }
+                ]
+            }
+        """.trimIndent()
+
+        val container = gson.fromJson(json, DockerContainer::class.java)
+        assertNotNull(container)
+        assertEquals("1234567890abcdef", container.id)
+        assertEquals("nginx-proxy", container.name)
+        assertEquals("running", container.status)
+        assertEquals("nginx:latest", container.image)
+        assertEquals(5.4, container.cpuPercent, 0.001)
+        assertEquals(128.0, container.memoryMb, 0.001)
+        assertEquals(1.25, container.memoryPercent, 0.001)
+        assertEquals(86400L, container.uptimeSeconds)
+        assertEquals("healthy", container.healthStatus)
+        assertEquals(8080, container.firstPort)
+        assertEquals(8080, container.firstHttpPort)
+        assertTrue(container.isRunning)
+        assertTrue(container.isHealthy)
+    }
+
+    @Test
+    fun testDockerContainer_nullAndDefaults() {
+        val json = """{"id": "abc"}"""
+        val container = gson.fromJson(json, DockerContainer::class.java)
+        assertNotNull(container)
+        assertEquals("abc", container.id)
+        assertEquals(0.0, container.cpuPercent, 0.001)
+        assertEquals(0.0, container.memoryMb, 0.001)
+        assertEquals(0L, container.uptimeSeconds)
+    }
 }

@@ -19,7 +19,8 @@ data class ContainerDetailUIState(
     val details: ContainerDetails? = null,
     val isLoading: Boolean = true,
     val actionInProgress: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val isAdmin: Boolean = true
 )
 
 @HiltViewModel
@@ -34,7 +35,10 @@ class ContainerDetailViewModel @Inject constructor(
     private var refreshJob: Job? = null
     private var isAutoRefreshStarted = false
 
-    init { loadDetails() }
+    init {
+        _uiState.update { it.copy(isAdmin = repository.isCurrentServerAdmin()) }
+        loadDetails()
+    }
 
     fun loadDetails() {
         _uiState.update { it.copy(isLoading = true, error = null) }

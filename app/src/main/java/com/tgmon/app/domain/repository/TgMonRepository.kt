@@ -11,6 +11,7 @@ import com.tgmon.app.data.models.ContainerDetails
 import com.tgmon.app.data.models.MetricHistory
 import com.tgmon.app.data.models.MetricHistoryDto
 import com.tgmon.app.data.models.ServiceUrlsResponse
+import com.tgmon.app.data.models.VerifyAuthResponse
 import com.tgmon.app.data.preferences.PreferencesManager
 import com.tgmon.app.data.preferences.ServerConfig
 import kotlinx.coroutines.Dispatchers
@@ -86,12 +87,21 @@ class TgMonRepository(
             }
 
             if (successResponse != null) {
+                var detectedRole = "admin"
+                val workingUrl = if (localUrl.isNotBlank() && lastException == null) localUrl else remoteUrl
+                if (workingUrl.isNotBlank()) {
+                    val authRes = checkVerifyWithToken(workingUrl, token)
+                    if (authRes != null && authRes.role.isNotBlank()) {
+                        detectedRole = authRes.role
+                    }
+                }
                 val newServer = ServerConfig(
                     name = name.takeIf { it.isNotBlank() } ?: "Mi Servidor",
                     localUrl = localUrl.trim(),
                     remoteUrl = remoteUrl.trim(),
                     token = token.trim(),
-                    isDefault = true
+                    isDefault = true,
+                    role = detectedRole
                 )
                 preferencesManager.saveServerConfig(newServer)
                 preferencesManager.setDefaultServerId(newServer.id)
@@ -133,6 +143,32 @@ class TgMonRepository(
             api.getHealth()
         } catch (e: Exception) {
             throw e
+        }
+    }
+
+    private suspend fun checkVerifyWithToken(baseUrl: String, token: String): VerifyAuthResponse? {
+        return try {
+            val normalized = if (baseUrl.endsWith("/")) baseUrl else "${baseUrl}/"
+            val client = OkHttpClient.Builder()
+                .addInterceptor(Interceptor { chain ->
+                    val original = chain.request()
+                    val req = original.newBuilder()
+                        .header("Authorization", "Bearer $token")
+                        .build()
+                    chain.proceed(req)
+                })
+                .build()
+
+            val retrofit = Retrofit.Builder()
+                .baseUrl(normalized)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create(com.tgmon.app.data.api.RetrofitClient.tgmonGson))
+                .build()
+
+            val api = retrofit.create(TgMonApi::class.java)
+            api.verifyAuth()
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -369,7 +405,18 @@ class TgMonRepository(
     }
 
     suspend fun verifyAuth(): Result<Boolean> {
-        return executeWithRetry { it.verifyAuth()["valid"] == true }
+        return executeWithRetry { api ->
+            val res = api.verifyAuth()
+            val config = getServerConfig()
+            if (config != null && config.role != res.role) {
+                preferencesManager.saveServerConfig(config.copy(role = res.role))
+            }
+            res.valid
+        }
+    }
+
+    fun isCurrentServerAdmin(): Boolean {
+        return getServerConfig()?.isAdmin ?: true
     }
 
     suspend fun invalidateAuth(): Result<Boolean> {

@@ -10,13 +10,19 @@ import secrets
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("tgmon")
 
+ROLE_ADMIN = "admin"
+ROLE_VIEWER = "viewer"
+
 try:
-    TOKEN = os.getenv('TGMON_TOKEN')
-    if not TOKEN:
-        logger.error("TGMON_TOKEN environment variable not defined - server will return 503")
-        TOKEN = None
+    ADMIN_TOKEN = os.getenv('TGMON_ADMIN_TOKEN') or os.getenv('TGMON_TOKEN')
+    VIEWER_TOKEN = os.getenv('TGMON_VIEWER_TOKEN')
+    TOKEN = ADMIN_TOKEN
+    if not ADMIN_TOKEN and not VIEWER_TOKEN:
+        logger.error("Neither TGMON_ADMIN_TOKEN nor TGMON_TOKEN environment variable defined - server will return 503")
 except Exception as e:
-    logger.error(f"Failed to load TGMON_TOKEN: {e}")
+    logger.error(f"Failed to load tokens: {e}")
+    ADMIN_TOKEN = None
+    VIEWER_TOKEN = None
     TOKEN = None
 
 # ---------------------------------------------------------------------------
@@ -141,25 +147,46 @@ def is_token_valid() -> bool:
         return False
     return True
 
-def check_auth(authorization: str | None, require_fresh: bool = True) -> bool:
-    if not TOKEN:
-        logger.warning("Authentication rejected: TGMON_TOKEN not configured")
+def get_token_role(token: str | None) -> str | None:
+    """Return 'admin', 'viewer', or None using constant-time comparison."""
+    if not token or not isinstance(token, str):
+        return None
+    admin_tok = os.getenv('TGMON_ADMIN_TOKEN') or os.getenv('TGMON_TOKEN') or ADMIN_TOKEN
+    viewer_tok = os.getenv('TGMON_VIEWER_TOKEN') or VIEWER_TOKEN
+
+    if admin_tok and secrets.compare_digest(token, admin_tok):
+        return ROLE_ADMIN
+    if viewer_tok and secrets.compare_digest(token, viewer_tok):
+        return ROLE_VIEWER
+    return None
+
+def check_auth(authorization: str | None, require_fresh: bool = True, required_role: str = ROLE_VIEWER) -> str:
+    admin_tok = os.getenv('TGMON_ADMIN_TOKEN') or os.getenv('TGMON_TOKEN') or ADMIN_TOKEN
+    viewer_tok = os.getenv('TGMON_VIEWER_TOKEN') or VIEWER_TOKEN
+
+    if not admin_tok and not viewer_tok:
+        logger.warning("Authentication rejected: TGMON_TOKEN / TGMON_ADMIN_TOKEN not configured")
         raise HTTPException(status_code=503, detail='Server not configured: TGMON_TOKEN not defined')
-    
-    if require_fresh and not is_token_valid():
-        logger.warning("Authentication rejected: token has been invalidated")
-        raise HTTPException(status_code=401, detail='Token invalidated, please re-authenticate')
     
     if not authorization or not authorization.startswith('Bearer '):
         logger.warning("Authentication failed: missing or invalid Authorization header")
         raise HTTPException(status_code=401, detail='Unauthorized')
     
     token = authorization.split(' ', 1)[1]
-    if not secrets.compare_digest(token, TOKEN):
+    role = get_token_role(token)
+    if not role:
         logger.warning("Authentication failed: invalid token")
         raise HTTPException(status_code=401, detail='Unauthorized')
     
-    return True
+    if require_fresh and not is_token_valid():
+        logger.warning("Authentication rejected: token has been invalidated")
+        raise HTTPException(status_code=401, detail='Token invalidated, please re-authenticate')
+    
+    if required_role == ROLE_ADMIN and role != ROLE_ADMIN:
+        logger.warning(f"Forbidden: Action requires role {ROLE_ADMIN}, but token role is {role}")
+        raise HTTPException(status_code=403, detail='Forbidden: Admin privileges required')
+    
+    return role
 
 def reenable_token():
     """Re-enable the token (remove lock file)."""

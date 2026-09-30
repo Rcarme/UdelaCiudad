@@ -22,7 +22,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from docker_api import router as docker_router, get_docker_summary, start_docker_cache, stop_docker_cache, client, _broadcast_worker, init_docker_api_loop
 from db import init_db, insert_metric, get_history, cleanup_old_metrics, shutdown_db, get_connection
-from auth import check_auth, TOKEN, invalidate_token
+from auth import check_auth, TOKEN, invalidate_token, reenable_token, is_token_valid, cleanup_token_lock, ROLE_ADMIN, get_token_role
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("tgmon")
@@ -275,6 +275,7 @@ async def save_metrics_to_db() -> None:
 async def maintenance_task() -> None:
     def _do_maintenance():
         cleanup_old_metrics(days=30)
+        cleanup_token_lock()
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT COUNT(*) FROM metrics')
@@ -445,15 +446,22 @@ def status(request: Request, authorization: str = Header(None)) -> dict:
 @app.post("/auth/invalidate")
 @limiter.limit("5/minute")
 def invalidate_token_endpoint(request: Request, authorization: str = Header(None)) -> dict:
-    check_auth(authorization)
+    check_auth(authorization, required_role=ROLE_ADMIN)
     invalidate_token()
     return {"success": True, "message": "Token invalidated"}
+
+@app.post("/auth/reenable")
+@limiter.limit("5/minute")
+def reenable_token_endpoint(request: Request, authorization: str = Header(None)) -> dict:
+    check_auth(authorization, require_fresh=False, required_role=ROLE_ADMIN)
+    reenable_token()
+    return {"success": True, "message": "Token re-enabled"}
 
 @app.get("/auth/verify")
 @limiter.limit("30/minute")
 def verify_token_endpoint(request: Request, authorization: str = Header(None)) -> dict:
-    check_auth(authorization)
-    return {"valid": True}
+    role = check_auth(authorization)
+    return {"valid": True, "role": role}
 
 async def ws_broadcaster() -> None:
     while True:
@@ -513,8 +521,16 @@ async def websocket_endpoint(websocket: WebSocket):
     client_id = None
     try:
         auth_msg = await asyncio.wait_for(websocket.receive_json(), timeout=5)
-        if auth_msg.get("type") != "auth" or not secrets.compare_digest(auth_msg.get("token", ""), TOKEN):
+        if not TOKEN:
+            await websocket.close(code=1008, reason="Server not configured")
+            return
+        received_token = auth_msg.get("token", "")
+        role = get_token_role(received_token)
+        if auth_msg.get("type") != "auth" or not role:
             await websocket.close(code=1008, reason="Unauthorized")
+            return
+        if not is_token_valid():
+            await websocket.close(code=1008, reason="Token invalidated")
             return
         client_id = str(uuid.uuid4())
     except asyncio.TimeoutError:
@@ -527,7 +543,7 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.close(code=1011, reason="Internal error")
         return
     await manager.connect(websocket)
-    await websocket.send_text(json.dumps({"type": "auth_ok"}))
+    await websocket.send_text(json.dumps({"type": "auth_ok", "role": role}))
     try:
         while True:
             try:

@@ -59,6 +59,14 @@ class SnapshotWorker(
                 val oneDayAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000L)
                 dao.deleteOldMetrics(oneDayAgo)
                 Log.d(TAG, "Snapshot saved successfully")
+
+                // Update Glance widget with fresh metrics
+                try {
+                    val updateRequest = androidx.work.OneTimeWorkRequestBuilder<WidgetUpdateWorker>().build()
+                    WorkManager.getInstance(context).enqueue(updateRequest)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to enqueue widget update from snapshot: ${e.message}")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Database operation failed", e)
                 return Result.failure()

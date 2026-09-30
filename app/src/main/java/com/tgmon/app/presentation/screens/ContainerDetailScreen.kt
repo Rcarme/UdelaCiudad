@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -110,6 +111,7 @@ fun ContainerDetailScreen(
                             ContainerDetailContent(
                                 details = details,
                                 actionInProgress = uiState.actionInProgress,
+                                isAdmin = uiState.isAdmin,
                                 onStart = { viewModel.startContainer() },
                                 onStop = { viewModel.stopContainer() },
                                 onRestart = { viewModel.restartContainer() },
@@ -142,6 +144,7 @@ fun ContainerDetailScreen(
 private fun ContainerDetailContent(
     details: ContainerDetails,
     actionInProgress: Boolean,
+    isAdmin: Boolean = true,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onRestart: () -> Unit,
@@ -363,47 +366,76 @@ private fun ContainerDetailContent(
             }
         }
 
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ActionButton(
-                    icon = Icons.Filled.PlayArrow,
-                    label = "Start",
-                    enabled = !actionInProgress && !isRunning,
-                    onClick = onStart,
-                    modifier = Modifier.weight(1f)
-                )
-                ActionButton(
-                    icon = if (isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                    label = if (isPaused) "Resume" else "Pause",
-                    enabled = !actionInProgress && (isRunning || isPaused),
-                    onClick = if (isPaused) onUnpause else onPause,
-                    modifier = Modifier.weight(1f)
-                )
+        if (isAdmin) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ActionButton(
+                        icon = Icons.Filled.PlayArrow,
+                        label = "Start",
+                        enabled = !actionInProgress && !isRunning,
+                        onClick = onStart,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ActionButton(
+                        icon = if (isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                        label = if (isPaused) "Resume" else "Pause",
+                        enabled = !actionInProgress && (isRunning || isPaused),
+                        onClick = if (isPaused) onUnpause else onPause,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
-        }
 
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ActionButton(
-                    icon = Icons.Filled.Refresh,
-                    label = "Restart",
-                    enabled = !actionInProgress && isRunning,
-                    onClick = onRestart,
-                    modifier = Modifier.weight(1f)
-                )
-                ActionButton(
-                    icon = Icons.Filled.Stop,
-                    label = "Stop",
-                    enabled = !actionInProgress && isRunning,
-                    onClick = onStop,
-                    modifier = Modifier.weight(1f)
-                )
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ActionButton(
+                        icon = Icons.Filled.Refresh,
+                        label = "Restart",
+                        enabled = !actionInProgress && isRunning,
+                        onClick = onRestart,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ActionButton(
+                        icon = Icons.Filled.Stop,
+                        label = "Stop",
+                        enabled = !actionInProgress && isRunning,
+                        onClick = onStop,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        } else {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0x1A2196F3)),
+                    border = BorderStroke(1.dp, Color(0x332196F3)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Visibility,
+                            contentDescription = "Viewer Mode",
+                            tint = Color(0xFF64B5F6),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Modo Observador (Solo Lectura). Las acciones de control (Start, Stop, Restart, Pause) requieren permisos de Administrador.",
+                            color = Color(0xFFE0E0E0),
+                            fontSize = 13.sp
+                        )
+                    }
+                }
             }
         }
 

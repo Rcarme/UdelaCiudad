@@ -203,6 +203,7 @@ fun TgMonApp(
                     }
                 },
                 onServerSwitch = { newServerId ->
+                    viewModel.switchServer(newServerId)
                     currentServerId = newServerId
                     navController.navigate("dashboard/$newServerId") {
                         popUpTo("dashboard") { inclusive = false }

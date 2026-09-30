@@ -1,4 +1,4 @@
-﻿# TgMon - Real-Time Server & Container Monitoring System
+# TgMon - Real-Time Server & Container Monitoring System
 
 TgMon is a full-stack telemetry and container monitoring solution comprising:
 1. **Python FastAPI Backend**: Collects host hardware metrics (CPU, RAM, Disks, Network) and Docker container statuses, exposing REST endpoints and real-time WebSockets.
@@ -116,10 +116,11 @@ graph TD
 | Endpoint | Method | Description |
 | :--- | :---: | :--- |
 | /health | GET | Instant snapshot of CPU, RAM, Disk, and system uptime. |
-| /metrics/history | GET | Historical telemetry records stored in SQLite database. |
+| /history | GET | Historical telemetry records stored in SQLite database. |
 | /docker/containers | GET | List of Docker containers with CPU/RAM usage and status. |
-| /docker/container/{id}/{action} | POST | Container actions: restart, start, stop, pause, unpause. |
-| /docker/container/{id}/logs | GET | Container stdout/stderr log stream. |
+| /docker/containers/{id}/{action} | POST | Container actions: restart, start, stop, pause, unpause. |
+| /docker/containers/{id}/logs | GET | Container stdout/stderr log stream. |
+| /docker/containers/{id}/details | GET | Detailed inspection of container configuration and mounts. |
 | /ws/telemetry | WebSocket | Real-time bi-directional telemetry and event streaming. |
 
 ---

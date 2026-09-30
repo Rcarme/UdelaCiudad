@@ -40,7 +40,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.tgmon.app"
+        applicationId = "com.tgmon.app.v2"
         minSdk = 26
         targetSdk = 35
         versionCode = generatedVersionCode
@@ -51,7 +51,7 @@ android {
             useSupportLibrary = true
         }
 
-        resValue("string", "app_name", "TGMon")
+        resValue("string", "app_name", "TGMon v2")
     }
 
     signingConfigs {
@@ -69,7 +69,7 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            resValue("string", "app_name", "TGMon Debug")
+            resValue("string", "app_name", "TGMon v2 Debug")
         }
         release {
             isMinifyEnabled = true
@@ -81,14 +81,14 @@ android {
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            resValue("string", "app_name", "TGMon")
+            resValue("string", "app_name", "TGMon v2")
         }
     }
 
     applicationVariants.all {
         outputs.all {
             val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output.outputFileName = "TGMon-${versionName}.apk"
+            output.outputFileName = "TGMon-v2-${versionName}.apk"
         }
     }
 

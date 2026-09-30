@@ -44,7 +44,7 @@ class PreferencesAlertManager(
                         val dao = AppDatabase.getInstance(context).alertHistoryDao()
                         dao.insert(AlertHistory(
                             type = "CPU_HIGH",
-                            message = "CPU: ${String.format("%.1f", response.cpuPercent)}%",
+                            message = "CPU: ${String.format(java.util.Locale.US, "%.1f", response.cpuPercent)}%",
                             value = response.cpuPercent.toFloat(),
                             serverId = preferencesManager.getDefaultServerId() ?: "unknown"
                         ))
@@ -63,7 +63,7 @@ class PreferencesAlertManager(
         val highestDisk = response.disks?.filter { it.totalGb > 0.0 }?.maxByOrNull { it.percent }
         val diskPercent = highestDisk?.percent ?: defaultDiskPercent
         val diskLabel = highestDisk?.device?.takeIf { it.isNotBlank() } ?: highestDisk?.mountpoint
-        val diskMessage = if (diskLabel != null) "Disco ($diskLabel): ${String.format("%.1f", diskPercent)}%" else "Disco: ${String.format("%.1f", diskPercent)}%"
+        val diskMessage = if (diskLabel != null) "Disco ($diskLabel): ${String.format(java.util.Locale.US, "%.1f", diskPercent)}%" else "Disco: ${String.format(java.util.Locale.US, "%.1f", diskPercent)}%"
 
         if (diskPercent > preferencesManager.getDiskThreshold().toDouble()) {
             val lastAlert = preferencesManager.getLastDiskAlertTime()
@@ -99,7 +99,7 @@ class PreferencesAlertManager(
                         val dao = AppDatabase.getInstance(context).alertHistoryDao()
                         dao.insert(AlertHistory(
                             type = "MEMORY_HIGH",
-                            message = "Memoria: ${String.format("%.1f", response.memoryPercent)}%",
+                            message = "Memoria: ${String.format(java.util.Locale.US, "%.1f", response.memoryPercent)}%",
                             value = response.memoryPercent.toFloat(),
                             serverId = preferencesManager.getDefaultServerId() ?: "unknown"
                         ))

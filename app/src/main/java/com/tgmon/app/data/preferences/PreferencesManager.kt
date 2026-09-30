@@ -17,11 +17,14 @@ data class ServerConfig(
     val localUrl: String,
     val remoteUrl: String,
     val token: String,
-    val isDefault: Boolean = false
+    val isDefault: Boolean = false,
+    val role: String = "admin"
 ) {
     fun isValid(): Boolean {
         return id.isNotBlank() && name.isNotBlank() && (localUrl.isNotBlank() || remoteUrl.isNotBlank())
     }
+
+    val isAdmin: Boolean get() = (role ?: "admin").equals("admin", ignoreCase = true)
 }
 
 class PreferencesManager(context: Context) {
@@ -327,6 +330,7 @@ class PreferencesManager(context: Context) {
     fun getDiskThreshold(): Float = preferences.getFloat("disk_threshold", 90f)
 
     fun isConfigured(): Boolean = getDefaultServer() != null
+    fun isCurrentServerAdmin(): Boolean = getDefaultServer()?.isAdmin ?: true
     fun getServerUrl(): String? = getDefaultServer()?.let { if (it.localUrl.isNotBlank()) it.localUrl else it.remoteUrl }
     fun getLocalUrl(): String? = getDefaultServer()?.localUrl
     fun getRemoteUrl(): String? = getDefaultServer()?.remoteUrl

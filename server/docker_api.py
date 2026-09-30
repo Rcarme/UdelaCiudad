@@ -12,7 +12,7 @@ from slowapi.util import get_remote_address
 import docker
 from docker.errors import DockerException, NotFound
 
-from auth import check_auth
+from auth import check_auth, ROLE_ADMIN
 
 
 def validate_container_id(container_id: str) -> bool:
@@ -286,7 +286,7 @@ async def list_containers(request: Request, authorization: str = Header(None)):
 @router.post('/containers/{container_id}/restart')
 @limiter.limit("20/minute")
 def restart_container(request: Request, container_id: str, authorization: str = Header(None)):
-    check_auth(authorization)
+    check_auth(authorization, required_role=ROLE_ADMIN)
     if not validate_container_id(container_id):
         raise HTTPException(status_code=400, detail="Invalid container ID format")
     _audit_log(request, "restart", container_id)
@@ -345,7 +345,7 @@ async def container_logs(request: Request, container_id: str, lines: int = 50, a
 @router.post('/containers/{container_id}/stop')
 @limiter.limit("20/minute")
 def stop_container(request: Request, container_id: str, authorization: str = Header(None)):
-    check_auth(authorization)
+    check_auth(authorization, required_role=ROLE_ADMIN)
     if not validate_container_id(container_id):
         raise HTTPException(status_code=400, detail="Invalid container ID format")
     _audit_log(request, "stop", container_id)
@@ -365,7 +365,7 @@ def stop_container(request: Request, container_id: str, authorization: str = Hea
 @router.post('/containers/{container_id}/start')
 @limiter.limit("20/minute")
 def start_container(request: Request, container_id: str, authorization: str = Header(None)):
-    check_auth(authorization)
+    check_auth(authorization, required_role=ROLE_ADMIN)
     if not validate_container_id(container_id):
         raise HTTPException(status_code=400, detail="Invalid container ID format")
     _audit_log(request, "start", container_id)
@@ -385,7 +385,7 @@ def start_container(request: Request, container_id: str, authorization: str = He
 @router.delete('/containers/{container_id}')
 @limiter.limit("20/minute")
 def remove_container(request: Request, container_id: str, force: bool = False, authorization: str = Header(None)):
-    check_auth(authorization)
+    check_auth(authorization, required_role=ROLE_ADMIN)
     if not validate_container_id(container_id):
         raise HTTPException(status_code=400, detail="Invalid container ID format")
     _audit_log(request, f"remove force={force}", container_id)
@@ -407,7 +407,7 @@ def remove_container(request: Request, container_id: str, force: bool = False, a
 @router.post('/containers/{container_id}/pause')
 @limiter.limit("20/minute")
 def pause_container_endpoint(request: Request, container_id: str, authorization: str = Header(None)):
-    check_auth(authorization)
+    check_auth(authorization, required_role=ROLE_ADMIN)
     if not validate_container_id(container_id):
         raise HTTPException(status_code=400, detail="Invalid container ID format")
     _audit_log(request, "pause", container_id)
@@ -431,7 +431,7 @@ def pause_container_endpoint(request: Request, container_id: str, authorization:
 @router.post('/containers/{container_id}/unpause')
 @limiter.limit("20/minute")
 def unpause_container_endpoint(request: Request, container_id: str, authorization: str = Header(None)):
-    check_auth(authorization)
+    check_auth(authorization, required_role=ROLE_ADMIN)
     if not validate_container_id(container_id):
         raise HTTPException(status_code=400, detail="Invalid container ID format")
     _audit_log(request, "unpause", container_id)

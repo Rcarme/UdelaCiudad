@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.HeartBroken
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -93,6 +94,7 @@ fun ContainersScreen(
     // stable lifecycle and avoids extra recompositions on low-CPU device.
     // Note: stable LazyColumn keys (key = { it.id }) also reduce re-measure cost.
     val isAutoRefreshing by viewModel.isAutoRefreshingLogs.collectAsState()
+    val isAdmin = preferencesManager.isCurrentServerAdmin()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var restartConfirmation by remember { mutableStateOf<String?>(null) }
@@ -192,6 +194,36 @@ fun ContainersScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    if (!isAdmin) {
+                        item {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0x1A2196F3)),
+                                border = BorderStroke(1.dp, Color(0x332196F3)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Visibility,
+                                        contentDescription = "Viewer Mode",
+                                        tint = Color(0xFF64B5F6),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Modo Observador (Solo Lectura)",
+                                        color = Color(0xFF90CAF9),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -222,6 +254,7 @@ fun ContainersScreen(
                             container = container,
                             isRestarting = uiState.value.isRestarting == container.id,
                             isLoading = uiState.value.isLoading,
+                            isAdmin = isAdmin,
                             onRestart = { restartConfirmation = container.id },
                             onViewLogs = {
                                 viewModel.openLogs(container.id, container.name)
@@ -407,6 +440,7 @@ fun ContainerCard(
     container: DockerContainer,
     isRestarting: Boolean = false,
     isLoading: Boolean = false,
+    isAdmin: Boolean = true,
     onRestart: () -> Unit = {},
     onViewLogs: () -> Unit = {},
     onPauseToggle: () -> Unit = {},
@@ -518,30 +552,32 @@ Card(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
-                    onClick = onRestart,
-                    enabled = !isRestarting && !isLoading && container.isRunning,
-                    modifier = Modifier.weight(1f),
-                    border = BorderStroke(1.dp, Color(0x33FFFFFF)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    if (isRestarting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.padding(end = 8.dp).size(16.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
+                if (isAdmin) {
+                    OutlinedButton(
+                        onClick = onRestart,
+                        enabled = !isRestarting && !isLoading && container.isRunning,
+                        modifier = Modifier.weight(1f),
+                        border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        if (isRestarting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.padding(end = 8.dp).size(16.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        }
+                        Text(
+                            text = if (isRestarting) "Restarting..." else "Restart",
+                            color = Color.White
                         )
                     }
-                    Text(
-                        text = if (isRestarting) "Restarting..." else "Restart",
-                        color = Color.White
-                    )
                 }
 
                 OutlinedButton(
                     onClick = onViewLogs,
                     enabled = !isLoading,
-                    modifier = Modifier.weight(1f),
+                    modifier = if (isAdmin) Modifier.weight(1f) else Modifier.fillMaxWidth(),
                     border = BorderStroke(1.dp, Color(0x33FFFFFF)),
                     shape = RoundedCornerShape(8.dp)
                 ) {
@@ -553,7 +589,7 @@ Card(
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 horizontalArrangement = Arrangement.End
             ) {
-                if (container.isRunning || container.isPaused) {
+                if (isAdmin && (container.isRunning || container.isPaused)) {
                     IconButton(onClick = onPauseToggle, enabled = !isLoading) {
                         Icon(
                             imageVector = if (container.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,

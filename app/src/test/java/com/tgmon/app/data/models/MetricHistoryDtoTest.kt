@@ -83,4 +83,32 @@ class MetricHistoryDtoTest {
         assertEquals(500.0, entity.diskTotalGb, 0.001)
         assertEquals(40.0, entity.diskPercent, 0.001)
     }
+
+    @Test
+    fun testMetricHistoryDto_nullDiskPercentHandled() {
+        val json = """
+            {
+                "timestamp": 1725700000000,
+                "cpu_percent": 10.0,
+                "memory_percent": 20.0,
+                "disk_used_gb": 50.0,
+                "disk_free_gb": 50.0,
+                "disk_total_gb": 100.0,
+                "disk_percent": null
+            }
+        """.trimIndent()
+
+        val dto = gson.fromJson(json, MetricHistoryDto::class.java)
+        assertNotNull(dto)
+        // When disk_percent is null in JSON, Gson assigns primitive double default 0.0
+        assertEquals(0.0, dto.diskPercent, 0.001)
+        val calculatedPercent = if (dto.diskPercent > 0.0) dto.diskPercent else MetricHistory.calculateDiskPercent(dto.diskUsedGb, dto.diskTotalGb)
+        assertEquals(50.0, calculatedPercent, 0.001)
+    }
+
+    @Test
+    fun testMetricHistory_calculateDiskPercentZeroTotal() {
+        val percent = MetricHistory.calculateDiskPercent(10.0, 0.0)
+        assertEquals(0.0, percent, 0.001)
+    }
 }

@@ -97,7 +97,8 @@ class TgMonNotificationManager(private val context: Context) {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .build()
-        notificationManager.notify(NOTIFICATION_CONTAINER_BASE + name.hashCode() % 100, notification)
+        val containerNotifyId = NOTIFICATION_CONTAINER_BASE + kotlin.math.abs(name.hashCode() % 100)
+        notificationManager.notify(containerNotifyId, notification)
     }
 
     fun notifyContainerUp(name: String) {
@@ -108,7 +109,8 @@ class TgMonNotificationManager(private val context: Context) {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .build()
-        notificationManager.notify(NOTIFICATION_CONTAINER_BASE + name.hashCode() % 100, notification)
+        val containerNotifyId = NOTIFICATION_CONTAINER_BASE + kotlin.math.abs(name.hashCode() % 100)
+        notificationManager.notify(containerNotifyId, notification)
     }
     
     companion object {
