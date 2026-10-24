@@ -38,3 +38,20 @@ class StatusResponse(BaseModel):
     load_avg: list[float] = Field(default_factory=list)
     docker_active: bool
     ssh_active: bool
+
+# --- Modelos del Módulo de IA (Fase 1) ---
+
+class AIPredictionResponse(BaseModel):
+    risk_level: str          # "low", "medium", "moderate", "high", "critical"
+    message: str             # Explicación de la tendencia o alerta
+    cpu_usage: float | None = None
+    memory_usage: float | None = None
+
+class ContainerRecommendation(BaseModel):
+    container_id: str
+    container_name: str
+    recommended_action: str  # "pause", "stop", etc.
+    reason: str              # Justificación analítica de la acción sugerida
+
+class AIRecommendationsResponse(BaseModel):
+    recommendations: list[ContainerRecommendation]
