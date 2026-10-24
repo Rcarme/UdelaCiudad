@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SECURITY: Backup rules harden allowBackup (now false). Defense-in-depth:
+     If backup ever re-enabled, exclude sensitive SharedPreferences that contain
+     TGMON_TOKEN (tgmon_prefs) and service URLs. Prevents token leakage via
+     adb backup / Google cloud backup. N97 low-resource: no overhead, just XML.
+-->
+<full-backup-content>
+    <!-- Exclude encrypted prefs containing TGMON_TOKEN -->
+    <exclude domain="sharedpref" path="tgmon_prefs.xml" />
+    <!-- Exclude service URLs (encrypted file) and legacy plaintext -->
+    <exclude domain="sharedpref" path="service_urls.xml" />
+    <exclude domain="sharedpref" path="service_urls_encrypted.xml" />
+    <!-- Optional: exclude Room DBs (metric history not highly sensitive but private) -->
+    <exclude domain="database" path="." />
+    <exclude domain="file" path="." />
+</full-backup-content>
