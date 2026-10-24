@@ -16,6 +16,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.Header
+import com.google.gson.JsonElement
 
 interface TgMonApi {
     @GET("/health")
@@ -87,4 +88,12 @@ interface TgMonApi {
 
     @POST("/auth/invalidate")
     suspend fun invalidateAuth(): Map<String, Any>
+
+    // IA: Predicción de picos de CPU y RAM
+    @GET("/ai/predict-spike")
+    suspend fun getAiPrediction(): JsonElement
+
+    // IA: Recomendaciones de contenedores inactivos
+    @GET("/ai/recommendations")
+    suspend fun getAiRecommendations(): JsonElement
 }
