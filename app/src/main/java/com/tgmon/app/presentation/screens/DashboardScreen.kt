@@ -787,11 +787,11 @@ fun ServiceGlassCard(container: DockerContainer) {
                 1.dp,
                 Color(0x556C63FF)
             ),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(12.dp)
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -804,62 +804,64 @@ fun ServiceGlassCard(container: DockerContainer) {
                         Icon(
                             imageVector = Icons.Filled.Warning,
                             contentDescription = null,
-                            tint = Color(0xFF6C63FF)
+                            tint = Color(0xFF6C63FF),
+                            modifier = Modifier.size(16.dp)
                         )
 
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(6.dp))
 
                         Text(
                             text = "AI Prediction",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                            fontSize = 13.sp
                         )
                     }
 
-                    IconButton(onClick = onRefresh) {
+                    IconButton(
+                        onClick = onRefresh,
+                        modifier = Modifier.size(24.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Filled.Refresh,
                             contentDescription = "Refresh AI prediction",
-                            tint = Color.White
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                 }
 
                 when {
                     state.isLoading -> {
-                        CircularProgressIndicator(
-                            color = Color(0xFF6C63FF),
-                            modifier = Modifier.size(28.dp)
-                        )
-
-                        Text(
-                            text = "Analyzing server metrics...",
-                            color = Color.LightGray,
-                            fontSize = 12.sp
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                color = Color(0xFF6C63FF),
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Text(
+                                text = "Analyzing server metrics...",
+                                color = Color.LightGray,
+                                fontSize = 11.sp
+                            )
+                        }
                     }
 
                     state.error != null -> {
                         Text(
-                            text = "AI prediction unavailable",
-                            color = Color(0xFFFFB74D),
-                            fontWeight = FontWeight.Medium
-                        )
-
-                        Text(
                             text = state.error,
-                            color = Color.LightGray,
-                            fontSize = 12.sp
+                            color = Color(0xFFFFB74D),
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
                     prediction != null -> {
-                        val json = if (prediction.isJsonObject) {
-                            prediction.asJsonObject
-                        } else {
-                            null
-                        }
+                        val json = if (prediction.isJsonObject) prediction.asJsonObject else null
 
                         val riskLevel = json?.get("risk_level")
                             ?.takeUnless { it.isJsonNull }
@@ -878,25 +880,37 @@ fun ServiceGlassCard(container: DockerContainer) {
                             else -> Color.LightGray
                         }
 
-                        Text(
-                            text = "Risk level: $riskLevel",
-                            color = riskColor,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-
-                        Text(
-                            text = message,
-                            color = Color.White,
-                            fontSize = 13.sp
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                color = riskColor.copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = riskLevel.uppercase(),
+                                    color = riskColor,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Text(
+                                text = message,
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
 
                     else -> {
                         Text(
                             text = "No AI prediction available yet.",
                             color = Color.LightGray,
-                            fontSize = 12.sp
+                            fontSize = 11.sp
                         )
                     }
                 }

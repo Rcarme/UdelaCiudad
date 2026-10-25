@@ -383,3 +383,43 @@ def test_viewer_token_rbac_permissions():
 
 
 
+
+
+def test_ai_predict_spike_requires_auth():
+    """GET /ai/predict-spike should return 401 without auth."""
+    response = client.get("/ai/predict-spike")
+    assert response.status_code == 401
+
+
+def test_ai_predict_spike_with_auth():
+    """GET /ai/predict-spike should return valid risk_level and message."""
+    response = client.get("/ai/predict-spike", headers=AUTH_HEADER)
+    assert response.status_code == 200
+    data = response.json()
+    assert "risk_level" in data
+    assert data["risk_level"] in ["low", "medium", "moderate", "high", "critical"]
+    assert "message" in data
+    assert isinstance(data["message"], str)
+    assert "cpu_usage" in data
+    assert "memory_usage" in data
+
+
+def test_ai_recommendations_requires_auth():
+    """GET /ai/recommendations should return 401 without auth."""
+    response = client.get("/ai/recommendations")
+    assert response.status_code == 401
+
+
+def test_ai_recommendations_with_auth():
+    """GET /ai/recommendations should return recommendations list."""
+    response = client.get("/ai/recommendations", headers=AUTH_HEADER)
+    assert response.status_code == 200
+    data = response.json()
+    assert "recommendations" in data
+    assert isinstance(data["recommendations"], list)
+    assert len(data["recommendations"]) > 0
+    rec = data["recommendations"][0]
+    assert "container_id" in rec
+    assert "container_name" in rec
+    assert "recommended_action" in rec
+    assert "reason" in rec

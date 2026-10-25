@@ -13,6 +13,7 @@ import time
 import uuid
 import psutil
 
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +24,15 @@ from slowapi.errors import RateLimitExceeded
 from docker_api import router as docker_router, get_docker_summary, start_docker_cache, stop_docker_cache, client, _broadcast_worker, init_docker_api_loop
 from db import init_db, insert_metric, get_history, cleanup_old_metrics, shutdown_db, get_connection
 from auth import check_auth, TOKEN, invalidate_token, reenable_token, is_token_valid, cleanup_token_lock, ROLE_ADMIN, get_token_role
+
+# --- Importaciones del Módulo de IA (Fase 1 y 2) ---
+try:
+    from ai import predict_resource_spikes, analyze_idle_containers
+    from models import AIPredictionResponse, AIRecommendationsResponse
+except ImportError:
+    from app.ai import predict_resource_spikes, analyze_idle_containers
+    from app.models import AIPredictionResponse, AIRecommendationsResponse
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("tgmon")
@@ -474,6 +484,37 @@ def status(request: Request, authorization: str = Header(None)) -> dict:
         "docker_active": is_process_running("dockerd"),
         "ssh_active": is_process_running("sshd"),
     }
+# --- Endpoints de Inteligencia Artificial (Fase 3) ---
+
+@app.get("/ai/predict-spike", response_model=AIPredictionResponse, tags=["AI"])
+@limiter.limit("30/minute")
+def ai_predict_spike(request: Request, authorization: str = Header(None)):
+    """
+    Evalúa la telemetría actual y tendencias en SQLite para emitir
+    alertas tempranas ante picos de CPU o saturación de RAM.
+    """
+    check_auth(authorization)
+    try:
+        return predict_resource_spikes()
+    except Exception as e:
+        logger.error(f"Error en predicción de IA: {e}")
+        raise HTTPException(status_code=500, detail="Error al generar predicción de IA")
+
+
+@app.get("/ai/recommendations", response_model=AIRecommendationsResponse, tags=["AI"])
+@limiter.limit("30/minute")
+def ai_recommendations(request: Request, authorization: str = Header(None)):
+    """
+    Analiza contenedores Docker en ejecución para sugerir acciones
+    de optimización (como pausar contenedores inactivos con CPU en 0.0%).
+    """
+    check_auth(authorization)
+    try:
+        return analyze_idle_containers()
+    except Exception as e:
+        logger.error(f"Error en recomendaciones de IA: {e}")
+        raise HTTPException(status_code=500, detail="Error al generar recomendaciones de IA")
+
 
 @app.post("/auth/invalidate")
 @limiter.limit("5/minute")
