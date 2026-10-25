@@ -24,6 +24,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material3.Surface
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -636,7 +643,7 @@ fun AIRecommendationsCard(
     var pendingPause by remember { mutableStateOf<String?>(null) }
 
     val json = state.recommendations
-    val recommendations = when {
+    val rawList = when {
         json == null -> emptyList()
         json.isJsonArray -> json.asJsonArray.toList()
         json.isJsonObject -> {
@@ -645,6 +652,29 @@ fun AIRecommendationsCard(
             else emptyList()
         }
         else -> emptyList()
+    }
+
+    val parsedList = rawList.mapNotNull { element ->
+        if (!element.isJsonObject) return@mapNotNull null
+        val obj = element.asJsonObject
+        fun field(name: String): String? {
+            val value = obj.get(name)
+            return if (
+                value != null &&
+                value.isJsonPrimitive &&
+                !value.isJsonNull
+            ) value.asString else null
+        }
+        val id = field("container_id")
+        val name = field("container_name") ?: id ?: "Unknown"
+        val action = field("recommended_action") ?: "Unknown"
+        val reason = field("reason") ?: "No reason provided"
+        object {
+            val id = id
+            val name = name
+            val action = action
+            val reason = reason
+        }
     }
 
     Card(
@@ -664,106 +694,264 @@ fun AIRecommendationsCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "AI Recommendations",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Filled.Warning,
+                        contentDescription = null,
+                        tint = Color(0xFF6C63FF),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "AI Recommendations",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                }
 
-                IconButton(onClick = onRefresh) {
+                IconButton(onClick = onRefresh, modifier = Modifier.size(28.dp)) {
                     Icon(
                         Icons.Filled.Refresh,
                         contentDescription = "Refresh AI recommendations",
-                        tint = Color.White
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
 
             when {
                 state.isLoading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = Color(0xFF6C63FF)
-                    )
-                    Text("Analyzing containers...", color = Color.LightGray)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = Color(0xFF6C63FF),
+                            strokeWidth = 2.dp
+                        )
+                        Text("Analyzing containers...", color = Color.LightGray, fontSize = 12.sp)
+                    }
                 }
 
                 state.error != null -> {
                     Text(
                         "AI recommendations unavailable",
-                        color = Color(0xFFFFB74D)
+                        color = Color(0xFFFFB74D),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
                     )
                     Text(
                         state.error,
                         color = Color.LightGray,
-                        fontSize = 12.sp
+                        fontSize = 11.sp
                     )
                 }
 
                 json == null -> {
                     Text(
                         "No recommendations loaded.",
-                        color = Color.LightGray
+                        color = Color.LightGray,
+                        fontSize = 12.sp
                     )
                 }
 
-                recommendations.isEmpty() -> {
+                parsedList.isEmpty() -> {
                     Text(
                         "No actionable recommendations available.",
-                        color = Color.LightGray
+                        color = Color.LightGray,
+                        fontSize = 12.sp
                     )
                 }
 
                 else -> {
-                    recommendations.forEach { element ->
-                        if (element.isJsonObject) {
-                            val obj = element.asJsonObject
+                    // Agrupar recomendaciones con idéntica acción y justificación para ahorrar espacio
+                    val grouped = parsedList.groupBy { it.action to it.reason }
 
-                            fun field(name: String): String? {
-                                val value = obj.get(name)
-                                return if (
-                                    value != null &&
-                                    value.isJsonPrimitive &&
-                                    !value.isJsonNull
-                                ) value.asString else null
-                            }
+                    grouped.forEach { (key, items) ->
+                        val (action, reason) = key
 
-                            val id = field("container_id")
-                            val name = field("container_name") ?: id ?: "Unknown"
-                            val action = field("recommended_action") ?: "Unknown"
-                            val reason = field("reason") ?: "No reason provided"
+                        if (items.size > 1) {
+                            // Grupo de múltiples contenedores con el mismo mensaje
+                            var isExpanded by rememberSaveable(action, reason) { mutableStateOf(false) }
 
-                            val container = containers.find { it.id == id }
-                            val canPause = isAdmin &&
-                                    action.equals("pause", ignoreCase = true) &&
-                                    container?.isRunning == true &&
-                                    !container.isPaused
-
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0x18FFFFFF)),
+                                shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text(
-                                    name,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    "Action: $action",
-                                    color = Color(0xFFB6ADFF),
-                                    fontSize = 12.sp
-                                )
-                                Text(
-                                    reason,
-                                    color = Color.LightGray,
-                                    fontSize = 12.sp
-                                )
-
-                                if (canPause && id != null) {
-                                    OutlinedButton(
-                                        onClick = { pendingPause = id }
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Pause container")
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Surface(
+                                                color = Color(0xFF6C63FF).copy(alpha = 0.25f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = action.uppercase(),
+                                                    color = Color(0xFFB6ADFF),
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 10.sp,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                            Text(
+                                                text = "${items.size} contenedores con consumo nulo",
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                        }
+
+                                        TextButton(
+                                            onClick = { isExpanded = !isExpanded },
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                                        ) {
+                                            Text(
+                                                text = if (isExpanded) "Ocultar" else "Ver lista (${items.size})",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFFB6ADFF)
+                                            )
+                                            Icon(
+                                                imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                                                contentDescription = null,
+                                                tint = Color(0xFFB6ADFF),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = reason,
+                                        color = Color.LightGray,
+                                        fontSize = 12.sp
+                                    )
+
+                                    if (isExpanded) {
+                                        Column(
+                                            modifier = Modifier.padding(top = 4.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            items.forEach { item ->
+                                                val container = containers.find { it.id == item.id }
+                                                val canPause = isAdmin &&
+                                                        action.equals("pause", ignoreCase = true) &&
+                                                        container?.isRunning == true &&
+                                                        !container.isPaused
+
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(Color(0x15000000), RoundedCornerShape(6.dp))
+                                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = item.name,
+                                                        color = Color.White,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                    if (canPause && item.id != null) {
+                                                        TextButton(
+                                                            onClick = { pendingPause = item.id },
+                                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                                                        ) {
+                                                            Text("Pausar", fontSize = 11.sp, color = Color(0xFFFF8A80))
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        val previewNames = items.take(3).joinToString(", ") { it.name }
+                                        val remainder = items.size - 3
+                                        Text(
+                                            text = if (remainder > 0) "$previewNames y $remainder más..." else previewNames,
+                                            color = Color(0xFF9E9E9E),
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            // Un único contenedor
+                            val item = items.first()
+                            if (action.equals("none", ignoreCase = true)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Filled.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Color(0xFF00FF88),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(item.reason, color = Color.LightGray, fontSize = 12.sp)
+                                }
+                            } else {
+                                val container = containers.find { it.id == item.id }
+                                val canPause = isAdmin &&
+                                        action.equals("pause", ignoreCase = true) &&
+                                        container?.isRunning == true &&
+                                        !container.isPaused
+
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            item.name,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
+                                        )
+                                        Surface(
+                                            color = Color(0xFF6C63FF).copy(alpha = 0.25f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = action.uppercase(),
+                                                color = Color(0xFFB6ADFF),
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 10.sp,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        item.reason,
+                                        color = Color.LightGray,
+                                        fontSize = 12.sp
+                                    )
+                                    if (canPause && item.id != null) {
+                                        OutlinedButton(
+                                            onClick = { pendingPause = item.id },
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("Pause container", fontSize = 12.sp)
+                                        }
                                     }
                                 }
                             }
@@ -799,4 +987,3 @@ fun AIRecommendationsCard(
         )
     }
 }
-
