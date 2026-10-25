@@ -89,6 +89,7 @@ fun ContainersScreen(
     onContainerClick: (String) -> Unit = {}
 ) {
     val uiState = viewModel.uiState.collectAsState()
+    val aiRecommendationsState by viewModel.aiRecommendationsState.collectAsState()
     // N97: collectAsState hoisted out of conditional — collecting inside let/if causes
     // recomposition instability when selectedLogContainerId toggles. Keeping at top ensures
     // stable lifecycle and avoids extra recompositions on low-CPU device.
@@ -194,6 +195,17 @@ fun ContainersScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // Recomendaciones de inteligencia artificial
+                    item {
+                        AIRecommendationsCard(
+                            state = aiRecommendationsState,
+                            isAdmin = isAdmin,
+                            containers = uiState.value.containers,
+                            onRefresh = { viewModel.loadAiRecommendations() },
+                            onPause = { id -> viewModel.pauseContainer(id) }
+                        )
+                    }
+
                     if (!isAdmin) {
                         item {
                             Card(
@@ -609,3 +621,179 @@ Card(
         }
     }
 }
+
+@Composable
+fun AIRecommendationsCard(
+    state: com.tgmon.app.presentation.viewmodel.AIRecommendationsState,
+    isAdmin: Boolean,
+    containers: List<DockerContainer>,
+    onRefresh: () -> Unit,
+    onPause: (String) -> Unit
+) {
+    var pendingPause by remember { mutableStateOf<String?>(null) }
+
+    val json = state.recommendations
+    val recommendations = when {
+        json == null -> emptyList()
+        json.isJsonArray -> json.asJsonArray.toList()
+        json.isJsonObject -> {
+            val list = json.asJsonObject.get("recommendations")
+            if (list != null && list.isJsonArray) list.asJsonArray.toList()
+            else emptyList()
+        }
+        else -> emptyList()
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0x2A1C1635)
+        ),
+        border = BorderStroke(1.dp, Color(0x556C63FF)),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "AI Recommendations",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+
+                IconButton(onClick = onRefresh) {
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = "Refresh AI recommendations",
+                        tint = Color.White
+                    )
+                }
+            }
+
+            when {
+                state.isLoading -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Color(0xFF6C63FF)
+                    )
+                    Text("Analyzing containers...", color = Color.LightGray)
+                }
+
+                state.error != null -> {
+                    Text(
+                        "AI recommendations unavailable",
+                        color = Color(0xFFFFB74D)
+                    )
+                    Text(
+                        state.error,
+                        color = Color.LightGray,
+                        fontSize = 12.sp
+                    )
+                }
+
+                json == null -> {
+                    Text(
+                        "No recommendations loaded.",
+                        color = Color.LightGray
+                    )
+                }
+
+                recommendations.isEmpty() -> {
+                    Text(
+                        "No actionable recommendations available.",
+                        color = Color.LightGray
+                    )
+                }
+
+                else -> {
+                    recommendations.forEach { element ->
+                        if (element.isJsonObject) {
+                            val obj = element.asJsonObject
+
+                            fun field(name: String): String? {
+                                val value = obj.get(name)
+                                return if (
+                                    value != null &&
+                                    value.isJsonPrimitive &&
+                                    !value.isJsonNull
+                                ) value.asString else null
+                            }
+
+                            val id = field("container_id")
+                            val name = field("container_name") ?: id ?: "Unknown"
+                            val action = field("recommended_action") ?: "Unknown"
+                            val reason = field("reason") ?: "No reason provided"
+
+                            val container = containers.find { it.id == id }
+                            val canPause = isAdmin &&
+                                    action.equals("pause", ignoreCase = true) &&
+                                    container?.isRunning == true &&
+                                    !container.isPaused
+
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    name,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "Action: $action",
+                                    color = Color(0xFFB6ADFF),
+                                    fontSize = 12.sp
+                                )
+                                Text(
+                                    reason,
+                                    color = Color.LightGray,
+                                    fontSize = 12.sp
+                                )
+
+                                if (canPause && id != null) {
+                                    OutlinedButton(
+                                        onClick = { pendingPause = id }
+                                    ) {
+                                        Text("Pause container")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pendingPause?.let { id ->
+        AlertDialog(
+            onDismissRequest = { pendingPause = null },
+            title = { Text("Pause container?") },
+            text = {
+                Text(
+                    "Pausing this container may interrupt its service. Do you want to continue?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingPause = null
+                    onPause(id)
+                }) {
+                    Text("Pause")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingPause = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+

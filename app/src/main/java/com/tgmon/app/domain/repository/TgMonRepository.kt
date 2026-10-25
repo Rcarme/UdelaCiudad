@@ -22,6 +22,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import com.google.gson.JsonElement
 
 class TgMonRepository(
     private val preferencesManager: PreferencesManager,
@@ -402,6 +403,21 @@ class TgMonRepository(
 
     suspend fun getHistoryCsv(hours: Int = 24): Result<String> {
         return executeWithRetry { it.getHistoryCsv(hours).string() }
+    }
+
+
+    // IA: Obtener predicciones de picos de CPU y RAM
+    suspend fun getAiPrediction(): Result<JsonElement> {
+        return executeWithRetry { api ->
+            api.getAiPrediction()
+        }
+    }
+
+    // IA: Obtener recomendaciones sobre contenedores
+    suspend fun getAiRecommendations(): Result<JsonElement> {
+        return executeWithRetry { api ->
+            api.getAiRecommendations()
+        }
     }
 
     suspend fun verifyAuth(): Result<Boolean> {

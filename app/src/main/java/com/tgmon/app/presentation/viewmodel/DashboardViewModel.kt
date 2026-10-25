@@ -47,6 +47,13 @@ import kotlinx.coroutines.sync.withLock
 import javax.inject.Qualifier
 import javax.inject.Inject
 
+
+data class AIPredictionState(
+    val isLoading: Boolean = false,
+    val prediction: com.google.gson.JsonElement? = null,
+    val error: String? = null
+)
+
 enum class WebSocketState { DISCONNECTED, CONNECTING, CONNECTED }
 
 @Qualifier
@@ -139,6 +146,11 @@ class DashboardViewModel @Inject constructor(
     
     private val _healthState = MutableStateFlow(DashboardHealthState())
     val healthState: StateFlow<DashboardHealthState> = _healthState
+
+    // Estado de las predicciones de IA
+    private val _aiPredictionState = MutableStateFlow(AIPredictionState())
+    val aiPredictionState: StateFlow<AIPredictionState> = _aiPredictionState
+
 
     private val _connectionState = MutableStateFlow(DashboardConnectionState())
     val connectionState: StateFlow<DashboardConnectionState> = _connectionState
@@ -290,6 +302,8 @@ class DashboardViewModel @Inject constructor(
         loadHistoricalMetrics()
         loadServers()
         connectWebSocket()
+        // Consultar la IA al iniciar el Dashboard
+        loadAiPrediction()
     }
 
     fun loadServers() {
@@ -383,6 +397,37 @@ class DashboardViewModel @Inject constructor(
         _connectionState.update { it.copy(isLoading = true, error = null) }
         viewModelScope.launch { refreshFromNetwork() }
     }
+
+
+    // Consultar predicciones de IA al servidor
+    fun loadAiPrediction() {
+        viewModelScope.launch {
+            _aiPredictionState.update {
+                it.copy(isLoading = true, error = null)
+            }
+
+            repository.getAiPrediction()
+                .onSuccess { response ->
+                    _aiPredictionState.update {
+                        it.copy(
+                            isLoading = false,
+                            prediction = response,
+                            error = null
+                        )
+                    }
+                }
+                .onFailure { exception ->
+                    _aiPredictionState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = exception.message
+                                ?: "Error al consultar la IA"
+                        )
+                    }
+                }
+        }
+    }
+
 
     private fun refreshFromNetwork() {
         viewModelScope.launch {
@@ -713,10 +758,12 @@ class DashboardViewModel @Inject constructor(
         _connectionState.value = DashboardConnectionState()
         _containersState.value = DashboardContainersState()
         _selectedTab.value = 0
+        _aiPredictionState.value = AIPredictionState()
         repository.recreate()
         loadWithCacheFirst()
         startAutoRefresh()
         connectWebSocket()
+        loadAiPrediction()
     }
 }
 

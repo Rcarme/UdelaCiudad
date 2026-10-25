@@ -22,6 +22,12 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 
+data class AIRecommendationsState(
+    val isLoading: Boolean = false,
+    val recommendations: com.google.gson.JsonElement? = null,
+    val error: String? = null
+)
+
 data class ContainersUIState(
     val isLoading: Boolean = false,
     val error: String? = null,
@@ -43,6 +49,10 @@ class ContainerViewModel @Inject constructor(
     
     private val _uiState = MutableStateFlow(ContainersUIState())
     val uiState: StateFlow<ContainersUIState> = _uiState
+
+    // Estado de recomendaciones de IA
+    private val _aiRecommendationsState = MutableStateFlow(AIRecommendationsState())
+    val aiRecommendationsState: StateFlow<AIRecommendationsState> = _aiRecommendationsState
 
     private var autoRefreshJob: Job? = null
     private var logAutoRefreshJob: Job? = null
@@ -77,6 +87,7 @@ class ContainerViewModel @Inject constructor(
         if (isInitialized) return
         isInitialized = true
         loadContainers()
+        loadAiRecommendations()
         startAutoRefresh()
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -99,6 +110,35 @@ class ContainerViewModel @Inject constructor(
                     loadContainers()
                 }
             }
+        }
+    }
+
+    // Consultar recomendaciones de IA
+    fun loadAiRecommendations() {
+        viewModelScope.launch {
+            _aiRecommendationsState.update {
+                it.copy(isLoading = true, error = null)
+            }
+
+            repository.getAiRecommendations()
+                .onSuccess { response ->
+                    _aiRecommendationsState.update {
+                        it.copy(
+                            isLoading = false,
+                            recommendations = response,
+                            error = null
+                        )
+                    }
+                }
+                .onFailure { exception ->
+                    _aiRecommendationsState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = exception.message
+                                ?: "Error al consultar recomendaciones de IA"
+                        )
+                    }
+                }
         }
     }
 
@@ -199,6 +239,7 @@ class ContainerViewModel @Inject constructor(
             repository.pauseContainer(id).onSuccess {
                 kotlinx.coroutines.delay(2000)
                 loadContainers()
+                loadAiRecommendations()
                 _uiState.update { it.copy(isRestarting = null) }
             }.onFailure { e ->
                 _uiState.update { it.copy(isRestarting = null, error = "Error pausing: ${e.message}") }

@@ -80,6 +80,7 @@ fun DashboardScreen(
     val uiState by viewModel.uiState.collectAsState()
     val historicalMetrics by viewModel.historicalMetrics.collectAsState()
     val servers by viewModel.servers.collectAsState()
+    val aiPredictionState by viewModel.aiPredictionState.collectAsState()
     var showLogoutDialog by rememberSaveable { mutableStateOf(false) }
     var showServerMenu by rememberSaveable { mutableStateOf(false) }
     var showOptionsMenu by rememberSaveable { mutableStateOf(false) }
@@ -242,7 +243,12 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         when (uiState.selectedTab) {
-                            0 -> OverviewTab(uiState, preferencesManager, currentServer?.name, onContainersClick)
+                            0 -> OverviewTab(uiState = uiState,
+                                preferencesManager = preferencesManager,
+                                serverName = currentServer?.name,
+                                onContainersClick = onContainersClick,
+                                aiPredictionState = aiPredictionState,
+                                onRefreshAI = { viewModel.loadAiPrediction() })
                             1 -> ChartsTab(historicalMetrics, onSyncHistory = { viewModel.syncHistory() })
                         }
                     }
@@ -364,7 +370,9 @@ fun OverviewTab(
     uiState: com.tgmon.app.presentation.viewmodel.DashboardUIState,
     preferencesManager: com.tgmon.app.data.preferences.PreferencesManager,
     serverName: String? = null,
-    onContainersClick: () -> Unit
+    onContainersClick: () -> Unit,
+    aiPredictionState: com.tgmon.app.presentation.viewmodel.AIPredictionState,
+    onRefreshAI: () -> Unit
 ) {
     val context = LocalContext.current
     // N97: Top 4 most used containers (running first, highest CPU+RAM usage)
@@ -468,6 +476,13 @@ fun OverviewTab(
                     StatGlassCard(title = "RAM", value = "${String.format(java.util.Locale.US, "%.1f", h.memoryPercent)}%", modifier = Modifier.weight(1f))
                 }
             }
+        }
+
+        item {
+            AIPredictionCard(
+                state = aiPredictionState,
+                onRefresh = onRefreshAI
+            )
         }
 
         item {
@@ -756,3 +771,135 @@ fun ServiceGlassCard(container: DockerContainer) {
         }
     }
 }
+    @Composable
+    fun AIPredictionCard(
+        state: com.tgmon.app.presentation.viewmodel.AIPredictionState,
+        onRefresh: () -> Unit
+    ) {
+        val prediction = state.prediction
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0x2A1C1635)
+            ),
+            border = BorderStroke(
+                1.dp,
+                Color(0x556C63FF)
+            ),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFF6C63FF)
+                        )
+
+                        Spacer(Modifier.width(8.dp))
+
+                        Text(
+                            text = "AI Prediction",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+
+                    IconButton(onClick = onRefresh) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Refresh AI prediction",
+                            tint = Color.White
+                        )
+                    }
+                }
+
+                when {
+                    state.isLoading -> {
+                        CircularProgressIndicator(
+                            color = Color(0xFF6C63FF),
+                            modifier = Modifier.size(28.dp)
+                        )
+
+                        Text(
+                            text = "Analyzing server metrics...",
+                            color = Color.LightGray,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    state.error != null -> {
+                        Text(
+                            text = "AI prediction unavailable",
+                            color = Color(0xFFFFB74D),
+                            fontWeight = FontWeight.Medium
+                        )
+
+                        Text(
+                            text = state.error,
+                            color = Color.LightGray,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    prediction != null -> {
+                        val json = if (prediction.isJsonObject) {
+                            prediction.asJsonObject
+                        } else {
+                            null
+                        }
+
+                        val riskLevel = json?.get("risk_level")
+                            ?.takeUnless { it.isJsonNull }
+                            ?.takeIf { it.isJsonPrimitive }
+                            ?.asString ?: "Unknown"
+
+                        val message = json?.get("message")
+                            ?.takeUnless { it.isJsonNull }
+                            ?.takeIf { it.isJsonPrimitive }
+                            ?.asString ?: "Prediction received"
+
+                        val riskColor = when (riskLevel.lowercase()) {
+                            "high", "critical" -> Color(0xFFFF5252)
+                            "medium", "moderate" -> Color(0xFFFFB74D)
+                            "low" -> Color(0xFF00FF88)
+                            else -> Color.LightGray
+                        }
+
+                        Text(
+                            text = "Risk level: $riskLevel",
+                            color = riskColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+
+                        Text(
+                            text = message,
+                            color = Color.White,
+                            fontSize = 13.sp
+                        )
+                    }
+
+                    else -> {
+                        Text(
+                            text = "No AI prediction available yet.",
+                            color = Color.LightGray,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
