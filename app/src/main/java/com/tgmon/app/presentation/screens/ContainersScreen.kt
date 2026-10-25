@@ -170,7 +170,10 @@ fun ContainersScreen(
         MeshBackground {
             PullToRefreshBox(
                 isRefreshing = uiState.value.isLoading,
-                onRefresh = { viewModel.loadContainers() },
+                onRefresh = {
+                    viewModel.loadContainers()
+                    viewModel.loadAiRecommendations()
+                },
                 state = pullRefreshState,
                 modifier = modifier
                     .fillMaxSize()

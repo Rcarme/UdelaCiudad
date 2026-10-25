@@ -399,8 +399,11 @@ class DashboardViewModel @Inject constructor(
     }
 
 
+    private var lastAiPredictionTime: Long = 0L
+
     // Consultar predicciones de IA al servidor
     fun loadAiPrediction() {
+        lastAiPredictionTime = System.currentTimeMillis()
         viewModelScope.launch {
             _aiPredictionState.update {
                 it.copy(isLoading = true, error = null)
@@ -430,6 +433,7 @@ class DashboardViewModel @Inject constructor(
 
 
     private fun refreshFromNetwork() {
+        loadAiPrediction()
         viewModelScope.launch {
             val healthDeferred = async { repository.getHealth() }
             val containersDeferred = async { repository.listContainers() }
@@ -636,6 +640,10 @@ class DashboardViewModel @Inject constructor(
                                         }
                                         saveMetricHistory(health)
                                         alertManager.checkAndNotify(health)
+                                        val now = System.currentTimeMillis()
+                                        if (now - lastAiPredictionTime > 10_000) {
+                                            loadAiPrediction()
+                                        }
                                     }
                                     "container_event" -> {
                                         val payload = message["payload"] as? Map<*, *>

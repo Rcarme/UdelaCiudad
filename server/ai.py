@@ -86,14 +86,15 @@ def analyze_idle_containers() -> AIRecommendationsResponse:
     """
     Examina los contenedores activos de Docker para detectar servicios inactivos
     y generar sugerencias de optimización orientadas a la acción (pause/stop).
+    Utiliza el caché asíncrono de Docker de TGMon para responder de forma instantánea sin bloquear.
     """
     recommendations = []
 
     try:
         try:
-            from docker_api import client
+            from docker_api import cached_containers, _cache_lock, client
         except ImportError:
-            from app.docker_api import client
+            from app.docker_api import cached_containers, _cache_lock, client
 
         if not client:
             return AIRecommendationsResponse(
@@ -102,54 +103,58 @@ def analyze_idle_containers() -> AIRecommendationsResponse:
                         container_id="sys_opt",
                         container_name="Contenedores Activos",
                         recommended_action="none",
-                        reason="Todos los contenedores en ejecución presentan actividad equilibrada.",
+                        reason="Docker no disponible o no accesible.",
                     )
                 ]
             )
 
-        containers = client.containers.list()
+        # 1. Obtener contenedores desde el caché de TGMon (no bloqueante, ultra rápido)
+        containers_data = []
+        try:
+            with _cache_lock:
+                containers_data = list(cached_containers)
+        except Exception:
+            containers_data = []
 
-        for container in containers:
-            status = container.status.lower()
+        # 2. Si el caché aún está vacío (recién arrancó el server), consultar lista rápida
+        if not containers_data and client:
+            try:
+                for c in client.containers.list():
+                    containers_data.append({
+                        "id": c.id,
+                        "name": c.name,
+                        "status": c.status.lower(),
+                        "cpu_percent": 0.0,
+                    })
+            except Exception as e:
+                logger.debug(f"Error listando contenedores: {e}")
+
+        # 3. Analizar contenedores
+        for c in containers_data:
+            status = str(c.get("status", "")).lower()
 
             # Solo evaluamos contenedores encendidos y no pausados
             if status == "running":
-                try:
-                    # Obtener métricas directas del contenedor sin bloquear
-                    stats = container.stats(stream=False)
+                name = str(c.get("name", ""))
+                cid = str(c.get("id", ""))[:12]
+                cpu_percent = float(c.get("cpu_percent", 0.0))
 
-                    cpu_stats = stats.get("cpu_stats", {})
-                    precpu_stats = stats.get("precpu_stats", {})
-
-                    cpu_delta = cpu_stats.get("cpu_usage", {}).get("total_usage", 0) - \
-                                precpu_stats.get("cpu_usage", {}).get("total_usage", 0)
-                    system_delta = cpu_stats.get("system_cpu_usage", 0) - \
-                                   precpu_stats.get("system_cpu_usage", 0)
-
-                    cpu_percent = 0.0
-                    if system_delta > 0.0 and cpu_delta > 0.0:
-                        online_cpus = cpu_stats.get("online_cpus", 1)
-                        cpu_percent = (cpu_delta / system_delta) * online_cpus * 100.0
-
-                    # Criterio: Contenedor con consumo de CPU insignificante o 0.0%
-                    if cpu_percent < 0.1:
-                        # Filtrar contenedores esenciales del sistema por nombre
-                        name = container.name.lower()
-                        if not any(k in name for k in ["system", "proxy", "core", "agent", "tgmon"]):
-                            recommendations.append(
-                                ContainerRecommendation(
-                                    container_id=container.id[:12],
-                                    container_name=container.name,
-                                    recommended_action="pause",
-                                    reason=f"Actividad nula de CPU ({cpu_percent:.1f}%). Se sugiere pausar para liberar recursos.",
-                                )
+                # Criterio: Contenedor con consumo de CPU insignificante o 0.0%
+                if cpu_percent < 0.1:
+                    # Filtrar contenedores esenciales del sistema por nombre
+                    name_lower = name.lower()
+                    if not any(k in name_lower for k in ["system", "proxy", "core", "agent", "tgmon"]):
+                        recommendations.append(
+                            ContainerRecommendation(
+                                container_id=cid,
+                                container_name=name,
+                                recommended_action="pause",
+                                reason=f"Actividad nula de CPU ({cpu_percent:.1f}%). Se sugiere pausar para liberar recursos.",
                             )
-                except Exception as ex:
-                    logger.debug(f"Error extrayendo stats del contenedor {container.name}: {ex}")
-                    continue
+                        )
 
     except Exception as e:
-        logger.warning(f"Docker no disponible o no accesible para análisis de IA: {e}")
+        logger.warning(f"Error en análisis de IA de contenedores: {e}")
 
     # Fallback descriptivo si Docker no está corriendo o no hay candidatos
     if not recommendations:

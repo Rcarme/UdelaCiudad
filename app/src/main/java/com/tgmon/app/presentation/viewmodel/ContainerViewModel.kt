@@ -108,6 +108,7 @@ class ContainerViewModel @Inject constructor(
                 kotlinx.coroutines.delay(30_000)
                 if (!isPaused) {
                     loadContainers()
+                    loadAiRecommendations()
                 }
             }
         }
