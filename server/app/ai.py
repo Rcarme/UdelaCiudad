@@ -71,7 +71,29 @@ def _call_gemini_structured(prompt: str, schema_model):
 
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
-        logger.info("GEMINI_API_KEY no definida; usando motor heurístico local.")
+        # Leer en vivo desde .env.api o .env (por si docker-compose inyectó GEMINI_API_KEY="" vacío)
+        for candidate in (
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.api"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"),
+        ):
+            try:
+                if os.path.exists(candidate):
+                    with open(candidate, "r", encoding="utf-8") as f:
+                        for line in f:
+                            s = line.strip()
+                            if s.startswith("GEMINI_API_KEY="):
+                                val = s.split("=", 1)[1].strip().strip('"').strip("'")
+                                if val and val != "tu_clave_aqui" and val != "your_gemini_api_key_here":
+                                    api_key = val
+                                    break
+                if api_key:
+                    break
+            except Exception:
+                pass
+
+    if not api_key:
+        logger.warning("GEMINI_API_KEY vacía o no definida en .env.api/.env; usando motor heurístico local.")
         return None
 
     safe_prompt = _sanitize_prompt(prompt)
@@ -143,7 +165,8 @@ def _call_gemini_structured(prompt: str, schema_model):
             f"Responde ÚNICAMENTE con un objeto JSON válido que cumpla este esquema exacto:\n"
             f"{json.dumps(schema_dict, ensure_ascii=False)}"
         )
-        for fallback_model in ("gemini-2.5-flash", "gemini-2.0-flash"):
+        last_http_err = None
+        for fallback_model in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"):
             try:
                 url_v1b = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:generateContent"
                 payload_v1b = json.dumps({
@@ -162,9 +185,12 @@ def _call_gemini_structured(prompt: str, schema_model):
                         if parts and parts[0].get("text"):
                             return schema_model.model_validate_json(parts[0]["text"])
             except urllib.error.HTTPError as http_err:
-                if http_err.code == 404:
+                last_http_err = f"HTTP {http_err.code} en {fallback_model}"
+                if http_err.code in (404, 400):
                     continue
                 raise
+        if last_http_err:
+            logger.warning(f"Ningún modelo respondió en Gemini ({last_http_err}); usando fallback local.")
     except Exception as rest_err:
         logger.warning(f"Fallback local activado tras error REST en Gemini: {rest_err}")
         return None
