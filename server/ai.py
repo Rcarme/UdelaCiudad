@@ -127,73 +127,57 @@ def _call_gemini_structured(prompt: str, schema_model):
         "x-goog-api-key": api_key,
     }
 
-    # 2a. Intentar endpoint Interactions v1beta2 (gemini-3.8-flash)
-    try:
-        url_v1b2 = "https://generativelanguage.googleapis.com/v1beta2/interactions"
-        payload_v1b2 = json.dumps({
-            "model": GEMINI_MODEL,
-            "input": safe_prompt,
-            "response_format": {
-                "type": "text",
-                "mime_type": "application/json",
-                "schema": schema_dict,
-            },
-            "store": False,
-        }).encode("utf-8")
-        req = urllib.request.Request(url_v1b2, data=payload_v1b2, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=10.0) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            output_text = data.get("output_text")
-            if not output_text:
-                for step in reversed(data.get("steps", [])):
-                    if step.get("type") == "model_output":
-                        for part in step.get("content", []):
-                            if part.get("type") == "text" and part.get("text"):
-                                output_text = part["text"]
-                                break
-                    if output_text:
-                        break
-            if output_text:
-                return schema_model.model_validate_json(output_text)
-    except Exception as e_v1b2:
-        logger.debug(f"Endpoint v1beta2 no disponible ({e_v1b2}), usando endpoint v1beta compatible...")
+    # 2. Endpoint REST de Google AI Studio con urllib.request (cero dependencias externas)
+    schema_prompt = (
+        f"{safe_prompt}\n\n"
+        f"Responde ÚNICAMENTE con un objeto JSON válido que cumpla este esquema exacto:\n"
+        f"{json.dumps(schema_dict, ensure_ascii=False)}"
+    )
 
-    # 2b. Endpoint estándar de Google AI Studio (v1beta generateContent con JSON estructurado)
-    try:
-        schema_prompt = (
-            f"{safe_prompt}\n\n"
-            f"Responde ÚNICAMENTE con un objeto JSON válido que cumpla este esquema exacto:\n"
-            f"{json.dumps(schema_dict, ensure_ascii=False)}"
-        )
-        last_http_err = None
-        for fallback_model in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"):
+    last_err = None
+    for model_name in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite"):
+        try:
+            url_v1b = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+            gen_config: dict = {
+                "responseMimeType": "application/json",
+                "temperature": 0.2,
+                "maxOutputTokens": 400,
+            }
+            if "2.5" in model_name:
+                # Desactivar extended thinking para que responda en ~1s sin timeout
+                gen_config["thinkingConfig"] = {"thinkingBudget": 0}
+
+            payload_v1b = json.dumps({
+                "contents": [{"parts": [{"text": schema_prompt}]}],
+                "generationConfig": gen_config,
+            }).encode("utf-8")
+
+            req = urllib.request.Request(url_v1b, data=payload_v1b, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=15.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    for part in parts:
+                        if part.get("text"):
+                            return schema_model.model_validate_json(part["text"])
+        except urllib.error.HTTPError as http_err:
+            err_body = ""
             try:
-                url_v1b = f"https://generativelanguage.googleapis.com/v1beta/models/{fallback_model}:generateContent"
-                payload_v1b = json.dumps({
-                    "contents": [{"parts": [{"text": schema_prompt}]}],
-                    "generationConfig": {
-                        "responseMimeType": "application/json",
-                        "temperature": 0.2,
-                    },
-                }).encode("utf-8")
-                req = urllib.request.Request(url_v1b, data=payload_v1b, headers=headers, method="POST")
-                with urllib.request.urlopen(req, timeout=10.0) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts and parts[0].get("text"):
-                            return schema_model.model_validate_json(parts[0]["text"])
-            except urllib.error.HTTPError as http_err:
-                last_http_err = f"HTTP {http_err.code} en {fallback_model}"
-                if http_err.code in (404, 400):
-                    continue
-                raise
-        if last_http_err:
-            logger.warning(f"Ningún modelo respondió en Gemini ({last_http_err}); usando fallback local.")
-    except Exception as rest_err:
-        logger.warning(f"Fallback local activado tras error REST en Gemini: {rest_err}")
-        return None
+                err_body = http_err.read().decode("utf-8")[:160]
+            except Exception:
+                pass
+            last_err = f"HTTP {http_err.code} en {model_name} ({err_body})"
+            if http_err.code in (404, 400, 429, 503):
+                continue
+            break
+        except Exception as model_err:
+            last_err = f"{model_err} en {model_name}"
+            continue
+
+    if last_err:
+        logger.warning(f"Fallback local activado tras error REST en Gemini: {last_err}")
+    return None
 
     return None
 
