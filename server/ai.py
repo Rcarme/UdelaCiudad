@@ -135,17 +135,13 @@ def _call_gemini_structured(prompt: str, schema_model):
     )
 
     last_err = None
-    for model_name in ("gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite"):
+    for model_name in ("gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-flash-latest"):
         try:
             url_v1b = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
             gen_config: dict = {
                 "responseMimeType": "application/json",
                 "temperature": 0.2,
-                "maxOutputTokens": 400,
             }
-            if "2.5" in model_name:
-                # Desactivar extended thinking para que responda en ~1s sin timeout
-                gen_config["thinkingConfig"] = {"thinkingBudget": 0}
 
             payload_v1b = json.dumps({
                 "contents": [{"parts": [{"text": schema_prompt}]}],
