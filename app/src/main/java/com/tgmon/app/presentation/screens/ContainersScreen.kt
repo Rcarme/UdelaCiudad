@@ -845,7 +845,7 @@ fun AIRecommendationsCard(
                                             verticalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             items.forEach { item ->
-                                                val container = containers.find { it.id == item.id }
+                                                val container = containers.find { item.id != null && (it.id == item.id || it.id.startsWith(item.id) || item.id.startsWith(it.id)) }
                                                 val canPause = isAdmin &&
                                                         action.equals("pause", ignoreCase = true) &&
                                                         container?.isRunning == true &&
@@ -909,7 +909,7 @@ fun AIRecommendationsCard(
                                     Text(item.reason, color = Color.LightGray, fontSize = 12.sp)
                                 }
                             } else {
-                                val container = containers.find { it.id == item.id }
+                                val container = containers.find { item.id != null && (it.id == item.id || it.id.startsWith(item.id) || item.id.startsWith(it.id)) }
                                 val canPause = isAdmin &&
                                         action.equals("pause", ignoreCase = true) &&
                                         container?.isRunning == true &&

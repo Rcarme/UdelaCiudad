@@ -24,30 +24,30 @@ def predict_resource_spikes() -> AIPredictionResponse:
     Analiza métricas actuales e históricas de CPU y RAM para predecir saturaciones.
     Combina:
     - Umbral estático: Uso superior al 85% sostenido.
-    - Umbral dinámico: Crecimiento vertical acelerado (> 20% entre muestras recientes).
+    - Umbral dinámico: Crecimiento vertical acelerado (> 20% entre muestras recientes y actual).
     """
     # 1. Obtener uso instantáneo del sistema
     current_cpu = psutil.cpu_percent(interval=None)
     current_ram = psutil.virtual_memory().percent
 
-    # 2. Consultar historial reciente en SQLite (últimas 10 muestras / 1 hora)
+    # 2. Consultar historial reciente en SQLite (última hora)
     history = get_history(hours=1)
 
-    # 3. Evaluar umbral dinámico (tendencia de crecimiento)
+    # 3. Evaluar umbral dinámico (tendencia de crecimiento incluyendo lectura actual)
     spike_detected = False
     rate_of_change = 0.0
 
-    if history and len(history) >= 2:
-        # Extraer las últimas muestras (hasta 5)
+    if history:
         recent_samples = history[-5:]
         cpu_values = [h.get("cpu_percent", h.get("cpu", 0.0)) for h in recent_samples]
+        cpu_values.append(current_cpu)
 
         if len(cpu_values) >= 2:
             initial_cpu = cpu_values[0]
             latest_cpu = cpu_values[-1]
             rate_of_change = latest_cpu - initial_cpu
 
-            # Si subió más de un 20% verticalmente en pocas muestras
+            # Si subió más de un 20% verticalmente respecto a la base reciente
             if rate_of_change >= 20.0:
                 spike_detected = True
 
