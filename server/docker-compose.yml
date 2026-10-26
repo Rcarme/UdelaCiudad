@@ -22,6 +22,7 @@ services:
       - TGMON_TOKEN=${TGMON_TOKEN:-shodan_secret_2026}
       - TGMON_ADMIN_TOKEN=${TGMON_ADMIN_TOKEN:-${TGMON_TOKEN:-shodan_secret_2026}}
       - TGMON_VIEWER_TOKEN=${TGMON_VIEWER_TOKEN:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     networks:
       - homelab
 

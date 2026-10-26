@@ -488,14 +488,15 @@ def status(request: Request, authorization: str = Header(None)) -> dict:
 
 @app.get("/ai/predict-spike", response_model=AIPredictionResponse, tags=["AI"])
 @limiter.limit("30/minute")
-def ai_predict_spike(request: Request, authorization: str = Header(None)):
+def ai_predict_spike(request: Request, use_llm: bool = False, authorization: str = Header(None)):
     """
     Evalúa la telemetría actual y tendencias en SQLite para emitir
     alertas tempranas ante picos de CPU o saturación de RAM.
+    Si use_llm=True, consulta a Gemini Flash bajo demanda con caché inteligente y fallback local.
     """
     check_auth(authorization)
     try:
-        return predict_resource_spikes()
+        return predict_resource_spikes(use_llm=use_llm)
     except Exception as e:
         logger.error(f"Error en predicción de IA: {e}")
         raise HTTPException(status_code=500, detail="Error al generar predicción de IA")
@@ -503,14 +504,15 @@ def ai_predict_spike(request: Request, authorization: str = Header(None)):
 
 @app.get("/ai/recommendations", response_model=AIRecommendationsResponse, tags=["AI"])
 @limiter.limit("30/minute")
-def ai_recommendations(request: Request, authorization: str = Header(None)):
+def ai_recommendations(request: Request, use_llm: bool = False, authorization: str = Header(None)):
     """
     Analiza contenedores Docker en ejecución para sugerir acciones
     de optimización (como pausar contenedores inactivos con CPU en 0.0%).
+    Si use_llm=True, consulta a Gemini Flash bajo demanda con caché inteligente y fallback local.
     """
     check_auth(authorization)
     try:
-        return analyze_idle_containers()
+        return analyze_idle_containers(use_llm=use_llm)
     except Exception as e:
         logger.error(f"Error en recomendaciones de IA: {e}")
         raise HTTPException(status_code=500, detail="Error al generar recomendaciones de IA")

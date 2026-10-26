@@ -401,15 +401,17 @@ class DashboardViewModel @Inject constructor(
 
     private var lastAiPredictionTime: Long = 0L
 
-    // Consultar predicciones de IA al servidor
-    fun loadAiPrediction() {
-        lastAiPredictionTime = System.currentTimeMillis()
+    // Consultar predicciones de IA al servidor (useLlm=true activa Gemini Flash bajo demanda)
+    fun loadAiPrediction(useLlm: Boolean = false) {
+        val now = System.currentTimeMillis()
+        // Si el usuario pidió análisis con IA explícitamente, conservar el resultado ~90s frente al polling heurístico
+        lastAiPredictionTime = if (useLlm) now + 80_000L else now
         viewModelScope.launch {
             _aiPredictionState.update {
                 it.copy(isLoading = true, error = null)
             }
 
-            repository.getAiPrediction()
+            repository.getAiPrediction(useLlm)
                 .onSuccess { response ->
                     _aiPredictionState.update {
                         it.copy(
@@ -433,7 +435,9 @@ class DashboardViewModel @Inject constructor(
 
 
     private fun refreshFromNetwork() {
-        loadAiPrediction()
+        if (System.currentTimeMillis() >= lastAiPredictionTime) {
+            loadAiPrediction(useLlm = false)
+        }
         viewModelScope.launch {
             val healthDeferred = async { repository.getHealth() }
             val containersDeferred = async { repository.listContainers() }

@@ -248,7 +248,7 @@ fun DashboardScreen(
                                 serverName = currentServer?.name,
                                 onContainersClick = onContainersClick,
                                 aiPredictionState = aiPredictionState,
-                                onRefreshAI = { viewModel.loadAiPrediction() })
+                                onRefreshAI = { viewModel.loadAiPrediction(useLlm = true) })
                             1 -> ChartsTab(historicalMetrics, onSyncHistory = { viewModel.syncHistory() })
                         }
                     }
@@ -818,15 +818,18 @@ fun ServiceGlassCard(container: DockerContainer) {
                         )
                     }
 
-                    IconButton(
-                        onClick = onRefresh,
-                        modifier = Modifier.size(24.dp)
+                    Surface(
+                        color = Color(0x336C63FF),
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(1.dp, Color(0x886C63FF)),
+                        modifier = Modifier.clickable(enabled = !state.isLoading) { onRefresh() }
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Refresh AI prediction",
-                            tint = Color.White,
-                            modifier = Modifier.size(14.dp)
+                        Text(
+                            text = "✨ Analizar con IA",
+                            color = Color(0xFFD1C4E9),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
                     }
                 }

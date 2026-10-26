@@ -2,6 +2,7 @@ package com.tgmon.app.presentation.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -211,7 +212,7 @@ fun ContainersScreen(
                             state = aiRecommendationsState,
                             isAdmin = isAdmin,
                             containers = uiState.value.containers,
-                            onRefresh = { viewModel.loadAiRecommendations() },
+                            onRefresh = { viewModel.loadAiRecommendations(useLlm = true) },
                             onPause = { id -> viewModel.pauseContainer(id) }
                         )
                     }
@@ -710,12 +711,18 @@ fun AIRecommendationsCard(
                     )
                 }
 
-                IconButton(onClick = onRefresh, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        Icons.Filled.Refresh,
-                        contentDescription = "Refresh AI recommendations",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
+                Surface(
+                    color = Color(0x336C63FF),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0x886C63FF)),
+                    modifier = Modifier.clickable(enabled = !state.isLoading) { onRefresh() }
+                ) {
+                    Text(
+                        text = "✨ Analizar con IA",
+                        color = Color(0xFFD1C4E9),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
             }

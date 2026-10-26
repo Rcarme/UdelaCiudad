@@ -423,3 +423,84 @@ def test_ai_recommendations_with_auth():
     assert "container_name" in rec
     assert "recommended_action" in rec
     assert "reason" in rec
+
+
+def test_ai_predict_spike_llm_fallback_without_key(monkeypatch):
+    """GET /ai/predict-spike?use_llm=true falls back cleanly to local heuristics when GEMINI_API_KEY is unset."""
+    import ai
+    ai.clear_ai_cache()
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    response = client.get("/ai/predict-spike?use_llm=true", headers=AUTH_HEADER)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["risk_level"] in ["low", "medium", "high", "critical"]
+    assert "message" in data
+
+
+def test_ai_predict_spike_llm_and_smart_cache():
+    """GET /ai/predict-spike?use_llm=true uses Gemini response and serves second request from smart cache."""
+    import ai
+    from models import AIPredictionResponse
+    ai.clear_ai_cache()
+
+    mock_llm_resp = AIPredictionResponse(
+        risk_level="medium",
+        message="Carga moderada detectada en base de datos.",
+        cpu_usage=45.0,
+        memory_usage=55.0,
+    )
+
+    with patch("ai._call_gemini_structured", return_value=mock_llm_resp) as mock_gemini, \
+         patch("ai.psutil.cpu_percent", return_value=45.0), \
+         patch("ai.psutil.virtual_memory") as mock_vm:
+        mock_vm.return_value.percent = 55.0
+
+        # 1st call invokes Gemini
+        res1 = client.get("/ai/predict-spike?use_llm=true", headers=AUTH_HEADER)
+        assert res1.status_code == 200
+        d1 = res1.json()
+        assert d1["risk_level"] == "medium"
+        assert d1["message"].startswith("✨ [Gemini IA]")
+        assert mock_gemini.call_count == 1
+
+        # 2nd call within TTL and <10% delta uses smart cache (0 additional Gemini calls)
+        res2 = client.get("/ai/predict-spike?use_llm=true", headers=AUTH_HEADER)
+        assert res2.status_code == 200
+        assert res2.json()["message"] == d1["message"]
+        assert mock_gemini.call_count == 1
+
+
+def test_ai_recommendations_llm_and_smart_cache():
+    """GET /ai/recommendations?use_llm=true uses Gemini recommendations and caches result."""
+    import ai
+    import docker_api
+    from models import AIRecommendationsResponse, ContainerRecommendation
+    ai.clear_ai_cache()
+
+    fake_containers = [
+        {"id": "abcdef1234567890", "name": "idle-worker-1", "status": "running", "cpu_percent": 0.0, "memory_mb": 32.0}
+    ]
+    mock_recs = AIRecommendationsResponse(
+        recommendations=[
+            ContainerRecommendation(
+                container_id="abcdef123456",
+                container_name="idle-worker-1",
+                recommended_action="pause",
+                reason="✨ [Gemini IA] Contenedor inactivo sin consumo de CPU.",
+            )
+        ]
+    )
+
+    with patch.object(docker_api, "client", MagicMock()), \
+         patch.object(docker_api, "cached_containers", fake_containers), \
+         patch("ai._call_gemini_structured", return_value=mock_recs) as mock_gemini:
+        res1 = client.get("/ai/recommendations?use_llm=true", headers=AUTH_HEADER)
+        assert res1.status_code == 200
+        data1 = res1.json()
+        assert data1["recommendations"][0]["reason"].startswith("✨ [Gemini IA]")
+        assert mock_gemini.call_count == 1
+
+        # Second call hits smart cache
+        res2 = client.get("/ai/recommendations?use_llm=true", headers=AUTH_HEADER)
+        assert res2.status_code == 200
+        assert mock_gemini.call_count == 1

@@ -407,16 +407,16 @@ class TgMonRepository(
 
 
     // IA: Obtener predicciones de picos de CPU y RAM
-    suspend fun getAiPrediction(): Result<JsonElement> {
+    suspend fun getAiPrediction(useLlm: Boolean = false): Result<JsonElement> {
         return executeWithRetry { api ->
-            api.getAiPrediction()
+            api.getAiPrediction(useLlm)
         }
     }
 
     // IA: Obtener recomendaciones sobre contenedores
-    suspend fun getAiRecommendations(): Result<JsonElement> {
+    suspend fun getAiRecommendations(useLlm: Boolean = false): Result<JsonElement> {
         return executeWithRetry { api ->
-            api.getAiRecommendations()
+            api.getAiRecommendations(useLlm)
         }
     }
 

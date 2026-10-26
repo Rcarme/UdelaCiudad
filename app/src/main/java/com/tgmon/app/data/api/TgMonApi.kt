@@ -91,9 +91,13 @@ interface TgMonApi {
 
     // IA: Predicción de picos de CPU y RAM
     @GET("/ai/predict-spike")
-    suspend fun getAiPrediction(): JsonElement
+    suspend fun getAiPrediction(
+        @Query("use_llm") useLlm: Boolean = false
+    ): JsonElement
 
     // IA: Recomendaciones de contenedores inactivos
     @GET("/ai/recommendations")
-    suspend fun getAiRecommendations(): JsonElement
+    suspend fun getAiRecommendations(
+        @Query("use_llm") useLlm: Boolean = false
+    ): JsonElement
 }

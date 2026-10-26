@@ -99,6 +99,8 @@ class ContainerViewModel @Inject constructor(
         }
     }
 
+    private var lastLlmRecommendationTime: Long = 0L
+
     private fun startAutoRefresh() {
         if (isAutoRefreshing) return
         isAutoRefreshing = true
@@ -108,20 +110,25 @@ class ContainerViewModel @Inject constructor(
                 kotlinx.coroutines.delay(30_000)
                 if (!isPaused) {
                     loadContainers()
-                    loadAiRecommendations()
+                    if (System.currentTimeMillis() - lastLlmRecommendationTime > 90_000L) {
+                        loadAiRecommendations(useLlm = false)
+                    }
                 }
             }
         }
     }
 
-    // Consultar recomendaciones de IA
-    fun loadAiRecommendations() {
+    // Consultar recomendaciones de IA (useLlm=true activa Gemini Flash bajo demanda)
+    fun loadAiRecommendations(useLlm: Boolean = false) {
+        if (useLlm) {
+            lastLlmRecommendationTime = System.currentTimeMillis()
+        }
         viewModelScope.launch {
             _aiRecommendationsState.update {
                 it.copy(isLoading = true, error = null)
             }
 
-            repository.getAiRecommendations()
+            repository.getAiRecommendations(useLlm)
                 .onSuccess { response ->
                     _aiRecommendationsState.update {
                         it.copy(
