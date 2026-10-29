@@ -1,5 +1,6 @@
 import logging
 import os
+import math
 import re
 import time
 import psutil
@@ -10,6 +11,9 @@ try:
         AIPredictionResponse,
         ContainerRecommendation,
         AIRecommendationsResponse,
+        ForecastPoint,
+        MetricForecast,
+        ForecastResponse,
     )
 except ImportError:
     from app.db import get_history
@@ -17,6 +21,9 @@ except ImportError:
         AIPredictionResponse,
         ContainerRecommendation,
         AIRecommendationsResponse,
+        ForecastPoint,
+        MetricForecast,
+        ForecastResponse,
     )
 
 logger = logging.getLogger("tgmon.ai")
@@ -411,3 +418,120 @@ def analyze_idle_containers(use_llm: bool = False) -> AIRecommendationsResponse:
             return llm_recs
 
     return heuristic_result
+
+
+# ---------------------------------------------------------------------------
+# Pronóstico de series temporales (regresión lineal por mínimos cuadrados)
+# ---------------------------------------------------------------------------
+FORECAST_CRITICAL_THRESHOLD = 85.0   # mismo umbral "critical" que predict_resource_spikes
+FORECAST_MIN_SAMPLES = 3
+FORECAST_ETA_MAX_MINUTES = 24 * 60   # no se informa un ETA más lejano que 24 h
+
+
+def _linear_forecast(
+    samples: list[tuple[int, float]],
+    now_ms: int,
+    horizon_minutes: int,
+    step_minutes: int,
+    metric: str,
+    threshold: float = FORECAST_CRITICAL_THRESHOLD,
+) -> MetricForecast | None:
+    """
+    Ajusta y = a + b*x por mínimos cuadrados (OLS), con x en minutos relativos a "ahora"
+    (x <= 0 para el pasado), y proyecta hasta `horizon_minutes`.
+    El intervalo de predicción al 95% usa el error estándar de los residuos:
+        y_hat +/- 1.96 * s * sqrt(1 + 1/n + (x - x_media)^2 / Sxx)
+    Devuelve None si la serie es degenerada (menos de 3 puntos o todos con el mismo timestamp).
+    """
+    n = len(samples)
+    if n < FORECAST_MIN_SAMPLES:
+        return None
+
+    xs = [(ts - now_ms) / 60000.0 for ts, _ in samples]
+    ys = [float(v) for _, v in samples]
+
+    x_mean = sum(xs) / n
+    y_mean = sum(ys) / n
+    sxx = sum((x - x_mean) ** 2 for x in xs)
+    if sxx <= 1e-9:
+        return None
+
+    sxy = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys))
+    slope = sxy / sxx
+    intercept = y_mean - slope * x_mean          # valor ajustado en x = 0 (ahora)
+
+    ss_tot = sum((y - y_mean) ** 2 for y in ys)
+    ss_res = sum((y - (intercept + slope * x)) ** 2 for x, y in zip(xs, ys))
+    r_squared = 1.0 - (ss_res / ss_tot) if ss_tot > 1e-9 else 0.0
+    r_squared = max(0.0, min(1.0, r_squared))
+    resid_std = math.sqrt(ss_res / (n - 2)) if n > 2 else 0.0
+
+    def clamp(v: float) -> float:
+        return max(0.0, min(100.0, v))
+
+    points: list[ForecastPoint] = []
+    for minute in range(0, horizon_minutes + 1, step_minutes):
+        y_hat = intercept + slope * minute
+        margin = 1.96 * resid_std * math.sqrt(1.0 + 1.0 / n + ((minute - x_mean) ** 2) / sxx)
+        points.append(
+            ForecastPoint(
+                timestamp=int(now_ms + minute * 60000),
+                value=round(clamp(y_hat), 2),
+                lower=round(clamp(y_hat - margin), 2),
+                upper=round(clamp(y_hat + margin), 2),
+            )
+        )
+
+    change_over_horizon = slope * horizon_minutes
+    if abs(change_over_horizon) < 2.0:
+        trend = "stable"
+    else:
+        trend = "rising" if slope > 0 else "falling"
+
+    minutes_to_threshold = None
+    if intercept >= threshold:
+        minutes_to_threshold = 0.0
+    elif slope > 1e-6:
+        eta = (threshold - intercept) / slope
+        if eta <= FORECAST_ETA_MAX_MINUTES:
+            minutes_to_threshold = round(eta, 1)
+
+    return MetricForecast(
+        metric=metric,
+        slope_per_min=round(slope, 4),
+        r_squared=round(r_squared, 3),
+        trend=trend,
+        threshold=threshold,
+        minutes_to_threshold=minutes_to_threshold,
+        points=points,
+    )
+
+
+def forecast_resources(
+    window_minutes: int = 60,
+    horizon_minutes: int = 30,
+    step_minutes: int = 5,
+) -> ForecastResponse:
+    """
+    Proyecta CPU y RAM a partir de las últimas `window_minutes` de telemetría en SQLite.
+    Es 100% local (sin LLM, sin cuota de API): corre en milisegundos.
+    """
+    now_ms = int(time.time() * 1000)
+    history = get_history(hours=max(1, math.ceil(window_minutes / 60)))
+    cutoff = now_ms - window_minutes * 60000
+    recent = [h for h in history if h.get("timestamp", 0) >= cutoff]
+
+    cpu_samples = [(h["timestamp"], h.get("cpu_percent", 0.0) or 0.0) for h in recent]
+    mem_samples = [(h["timestamp"], h.get("memory_percent", 0.0) or 0.0) for h in recent]
+
+    cpu_fc = _linear_forecast(cpu_samples, now_ms, horizon_minutes, step_minutes, "cpu")
+    mem_fc = _linear_forecast(mem_samples, now_ms, horizon_minutes, step_minutes, "memory")
+
+    return ForecastResponse(
+        available=cpu_fc is not None and mem_fc is not None,
+        samples_used=len(recent),
+        window_minutes=window_minutes,
+        horizon_minutes=horizon_minutes,
+        cpu=cpu_fc,
+        memory=mem_fc,
+    )

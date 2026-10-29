@@ -10,6 +10,7 @@ import com.tgmon.app.data.models.StatusResponse
 import com.tgmon.app.data.models.ContainerDetails
 import com.tgmon.app.data.models.MetricHistory
 import com.tgmon.app.data.models.MetricHistoryDto
+import com.tgmon.app.data.models.ForecastResponse
 import com.tgmon.app.data.models.ServiceUrlsResponse
 import com.tgmon.app.data.models.VerifyAuthResponse
 import com.tgmon.app.data.preferences.PreferencesManager
@@ -410,6 +411,16 @@ class TgMonRepository(
     suspend fun getAiPrediction(useLlm: Boolean = false): Result<JsonElement> {
         return executeWithRetry { api ->
             api.getAiPrediction(useLlm)
+        }
+    }
+
+    // IA: Pronóstico de CPU/RAM (regresión lineal en el servicio Python)
+    suspend fun getForecast(
+        windowMinutes: Int = 60,
+        horizonMinutes: Int = 30
+    ): Result<ForecastResponse> {
+        return executeWithRetry { api ->
+            api.getForecast(windowMinutes, horizonMinutes)
         }
     }
 

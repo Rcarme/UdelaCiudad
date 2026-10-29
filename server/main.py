@@ -27,11 +27,11 @@ from auth import check_auth, TOKEN, invalidate_token, reenable_token, is_token_v
 
 # --- Importaciones del Módulo de IA (Fase 1 y 2) ---
 try:
-    from ai import predict_resource_spikes, analyze_idle_containers
-    from models import AIPredictionResponse, AIRecommendationsResponse
+    from ai import predict_resource_spikes, analyze_idle_containers, forecast_resources
+    from models import AIPredictionResponse, AIRecommendationsResponse, ForecastResponse
 except ImportError:
-    from app.ai import predict_resource_spikes, analyze_idle_containers
-    from app.models import AIPredictionResponse, AIRecommendationsResponse
+    from app.ai import predict_resource_spikes, analyze_idle_containers, forecast_resources
+    from app.models import AIPredictionResponse, AIRecommendationsResponse, ForecastResponse
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -500,6 +500,31 @@ def ai_predict_spike(request: Request, use_llm: bool = False, authorization: str
     except Exception as e:
         logger.error(f"Error en predicción de IA: {e}")
         raise HTTPException(status_code=500, detail="Error al generar predicción de IA")
+
+
+@app.get("/ai/forecast", response_model=ForecastResponse, tags=["AI"])
+@limiter.limit("30/minute")
+def ai_forecast(
+    request: Request,
+    window_minutes: int = 60,
+    horizon_minutes: int = 30,
+    authorization: str = Header(None),
+):
+    """
+    Pronóstico de CPU y RAM por regresión lineal (OLS) sobre la telemetría de SQLite,
+    con intervalo de predicción al 95% y ETA hasta el umbral crítico (85%).
+    No usa LLM: costo cero de cuota, respuesta en milisegundos.
+    """
+    check_auth(authorization)
+    if window_minutes < 15 or window_minutes > 1440:
+        raise HTTPException(status_code=400, detail="window_minutes must be between 15 and 1440")
+    if horizon_minutes < 5 or horizon_minutes > 240:
+        raise HTTPException(status_code=400, detail="horizon_minutes must be between 5 and 240")
+    try:
+        return forecast_resources(window_minutes=window_minutes, horizon_minutes=horizon_minutes)
+    except Exception as e:
+        logger.error(f"Error en pronóstico: {e}")
+        raise HTTPException(status_code=500, detail="Error al generar el pronóstico")
 
 
 @app.get("/ai/recommendations", response_model=AIRecommendationsResponse, tags=["AI"])

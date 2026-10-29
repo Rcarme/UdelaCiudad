@@ -8,6 +8,7 @@ import com.tgmon.app.data.models.ContainerLogs
 import com.tgmon.app.data.models.RestartResponse
 import com.tgmon.app.data.models.ContainerDetails
 import com.tgmon.app.data.models.MetricHistoryDto
+import com.tgmon.app.data.models.ForecastResponse
 import com.tgmon.app.data.models.ServiceUrlsResponse
 import com.tgmon.app.data.models.VerifyAuthResponse
 import retrofit2.http.GET
@@ -94,6 +95,13 @@ interface TgMonApi {
     suspend fun getAiPrediction(
         @Query("use_llm") useLlm: Boolean = false
     ): JsonElement
+
+    // IA: Pronóstico de CPU/RAM por regresión lineal (sin LLM, costo cero)
+    @GET("/ai/forecast")
+    suspend fun getForecast(
+        @Query("window_minutes") windowMinutes: Int = 60,
+        @Query("horizon_minutes") horizonMinutes: Int = 30
+    ): ForecastResponse
 
     // IA: Recomendaciones de contenedores inactivos
     @GET("/ai/recommendations")

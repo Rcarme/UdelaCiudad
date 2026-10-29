@@ -27,3 +27,6 @@ server/*.pyc
 *.zip
 deploy_shodan/
 
+.audit-venv/
+tmp/
+Agregado/

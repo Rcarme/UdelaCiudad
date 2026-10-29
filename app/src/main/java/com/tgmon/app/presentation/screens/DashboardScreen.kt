@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.tgmon.app.data.models.DockerContainer
+import com.tgmon.app.data.models.ForecastResponse
 import com.tgmon.app.data.preferences.PreferencesManager
 import com.tgmon.app.data.preferences.ServerConfig
 import com.tgmon.app.presentation.components.DiskUsageCard
@@ -79,6 +80,7 @@ fun DashboardScreen(
     // collectAsStateWithLifecycle().
     val uiState by viewModel.uiState.collectAsState()
     val historicalMetrics by viewModel.historicalMetrics.collectAsState()
+    val forecast by viewModel.forecast.collectAsState()
     val servers by viewModel.servers.collectAsState()
     val aiPredictionState by viewModel.aiPredictionState.collectAsState()
     var showLogoutDialog by rememberSaveable { mutableStateOf(false) }
@@ -249,7 +251,7 @@ fun DashboardScreen(
                                 onContainersClick = onContainersClick,
                                 aiPredictionState = aiPredictionState,
                                 onRefreshAI = { viewModel.loadAiPrediction(useLlm = true) })
-                            1 -> ChartsTab(historicalMetrics, onSyncHistory = { viewModel.syncHistory() })
+                            1 -> ChartsTab(historicalMetrics, forecast = forecast, onSyncHistory = { viewModel.syncHistory() })
                         }
                     }
                 }
@@ -588,6 +590,7 @@ fun OverviewTab(
 @Composable
 fun ChartsTab(
     metrics: List<com.tgmon.app.data.models.MetricHistory>,
+    forecast: ForecastResponse? = null,
     onSyncHistory: () -> Unit = {}
 ) {
     // N97: hoisted lambdas avoid reallocating Function on each recomposition;
@@ -666,7 +669,8 @@ fun ChartsTab(
                     title = "CPU Usage (%)",
                     metrics = metrics,
                     valueExtractor = cpuExtractor,
-                    color = Color(0xFF6C63FF)
+                    color = Color(0xFF6C63FF),
+                    forecast = forecast?.cpu
                 )
             }
 
@@ -675,7 +679,8 @@ fun ChartsTab(
                     title = "Memory Usage (%)",
                     metrics = metrics,
                     valueExtractor = memoryExtractor,
-                    color = Color(0xFF00FFFF)
+                    color = Color(0xFF00FFFF),
+                    forecast = forecast?.memory
                 )
             }
 

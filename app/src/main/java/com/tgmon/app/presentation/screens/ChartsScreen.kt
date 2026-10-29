@@ -188,7 +188,8 @@ fun ChartsScreen(
                         valueExtractor = { it.cpuPercent },
                         unit = "%",
                         color = Color(0xFF4CAF50),
-                        maxValue = 100.0
+                        maxValue = 100.0,
+                        forecast = uiState.forecast?.cpu
                     )
                 }
             }
@@ -202,7 +203,8 @@ fun ChartsScreen(
                         valueExtractor = { it.memoryPercent },
                         unit = "%",
                         color = Color(0xFF2196F3),
-                        maxValue = 100.0
+                        maxValue = 100.0,
+                        forecast = uiState.forecast?.memory
                     )
                 }
             }

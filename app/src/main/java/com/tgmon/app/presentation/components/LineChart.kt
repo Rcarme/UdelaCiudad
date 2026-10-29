@@ -23,7 +23,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextMeasurer
@@ -33,12 +36,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tgmon.app.data.models.MetricForecast
 import com.tgmon.app.data.models.MetricHistory
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalTextApi::class)
 @Composable
@@ -48,12 +54,16 @@ fun LineChart(
     valueExtractor: (MetricHistory) -> Double,
     unit: String = "%",
     color: Color = MaterialTheme.colorScheme.primary,
-    maxValue: Double = 100.0
+    maxValue: Double = 100.0,
+    forecast: MetricForecast? = null
 ) {
+    // Solo se dibuja la proyección si el servidor devolvió al menos 2 puntos y hay historial
+    val fc = forecast?.takeIf { it.points.size >= 2 && metrics.isNotEmpty() }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(240.dp)
+            .height(if (fc != null) 280.dp else 240.dp)
             .padding(8.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -86,8 +96,15 @@ fun LineChart(
                 }
             } else {
                 val values = metrics.map { valueExtractor(it) }
-                val minValue = values.minOrNull() ?: 0.0
-                val effectiveMax = max(maxValue, values.maxOrNull() ?: maxValue)
+                val histMin = values.minOrNull() ?: 0.0
+                val histMax = values.maxOrNull() ?: 0.0
+                // Con pronóstico, el eje debe abarcar también la banda de confianza proyectada
+                val minValue = if (fc != null) min(histMin, fc.points.minOf { it.lower }) else histMin
+                val effectiveMax = if (fc != null) {
+                    max(max(maxValue, histMax), fc.points.maxOf { it.upper })
+                } else {
+                    max(maxValue, histMax)
+                }
 
                 var touchX by remember { mutableStateOf(-1f) }
                 val textMeasurer = rememberTextMeasurer()
@@ -129,21 +146,58 @@ fun LineChart(
                                 touchX = touchX,
                                 unit = unit,
                                 textMeasurer = textMeasurer,
-                                textColor = Color.White
+                                textColor = Color.White,
+                                forecast = fc
                             )
                         }
                 )
 
                 Text(
-                    text = "Min: ${String.format("%.1f", minValue)}$unit  |  Max: ${String.format("%.1f", values.maxOrNull() ?: 0.0)}$unit",
+                    text = "Min: ${String.format("%.1f", histMin)}$unit  |  Max: ${String.format("%.1f", histMax)}$unit",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+
+                if (fc != null) {
+                    val first = fc.points.first()
+                    val last = fc.points.last()
+                    val horizonMin = ((last.timestamp - first.timestamp) / 60000L).toInt()
+                    val arrow = when (fc.trend) {
+                        "rising" -> "↗"
+                        "falling" -> "↘"
+                        else -> "→"
+                    }
+                    val eta = fc.minutesToThreshold?.let { m ->
+                        if (m <= 0.0) "  |  Threshold ${fc.threshold.roundToInt()}% reached"
+                        else "  |  ${fc.threshold.roundToInt()}% in ~${m.roundToInt()} min"
+                    } ?: ""
+                    Text(
+                        text = "Forecast +${horizonMin} min: ${String.format("%.1f", last.value)}$unit $arrow " +
+                            "${String.format("%+.2f", fc.slopePerMin)}$unit/min  |  R² ${String.format("%.2f", fc.rSquared)}$eta",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (fc.minutesToThreshold != null) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
             }
         }
     }
 }
+
+/** Punto del gráfico usado para el tooltip (historial real o proyección). */
+private data class ChartPoint(
+    val offset: Offset,
+    val value: Double,
+    val timestamp: Long,
+    val isForecast: Boolean = false,
+    val lower: Double = 0.0,
+    val upper: Double = 0.0
+)
 
 @OptIn(ExperimentalTextApi::class)
 private fun DrawScope.drawInteractiveChart(
@@ -155,7 +209,8 @@ private fun DrawScope.drawInteractiveChart(
     touchX: Float,
     unit: String,
     textMeasurer: TextMeasurer,
-    textColor: Color
+    textColor: Color,
+    forecast: MetricForecast? = null
 ) {
     if (values.isEmpty()) return
 
@@ -180,9 +235,30 @@ private fun DrawScope.drawInteractiveChart(
         return
     }
 
+    // Conversión valor -> coordenada Y
+    fun yOf(value: Double): Float {
+        val normalized = (value - minValue) / valueRange
+        return height - padding - (normalized * (height - 2 * padding)).toFloat()
+    }
+
+    // Con pronóstico el eje X pasa a ser temporal (historial + futuro); sin pronóstico queda por índice
+    val tMin = metrics.first().timestamp
+    val tMax = if (forecast != null) {
+        maxOf(forecast.points.last().timestamp, metrics.last().timestamp)
+    } else {
+        metrics.last().timestamp
+    }
+    fun xOf(index: Int, timestamp: Long): Float {
+        return if (forecast != null && tMax > tMin) {
+            padding + ((timestamp - tMin).toFloat() / (tMax - tMin).toFloat()) * (width - 2 * padding)
+        } else {
+            (index / (values.size - 1).toFloat()) * (width - 2 * padding) + padding
+        }
+    }
+
     // Grid line
     val midValue = (minValue + maxValue) / 2
-    val midY = height - padding - ((midValue - minValue) / valueRange * (height - 2 * padding)).toFloat()
+    val midY = yOf(midValue)
     drawLine(
         color = color.copy(alpha = 0.2f),
         start = Offset(0f, midY),
@@ -192,10 +268,88 @@ private fun DrawScope.drawInteractiveChart(
 
     // Calculate points
     val points = values.mapIndexed { index, value ->
-        val x = (index / (values.size - 1).toFloat()) * (width - 2 * padding) + padding
-        val normalizedValue = (value - minValue) / valueRange
-        val y = height - padding - (normalizedValue * (height - 2 * padding)).toFloat()
-        Offset(x, y)
+        Offset(xOf(index, metrics[index].timestamp), yOf(value))
+    }
+
+    // --- Proyección (regresión lineal del servicio Python) ---
+    val forecastChartPoints = ArrayList<ChartPoint>()
+    if (forecast != null) {
+        val dash = PathEffect.dashPathEffect(floatArrayOf(18f, 12f), 0f)
+
+        // Línea de umbral crítico (p. ej. 85%) si cae dentro del rango visible
+        if (forecast.threshold >= minValue && forecast.threshold <= maxValue) {
+            val ty = yOf(forecast.threshold)
+            drawLine(
+                color = Color(0xFFE53935).copy(alpha = 0.7f),
+                start = Offset(0f, ty),
+                end = Offset(width, ty),
+                strokeWidth = 2f,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
+            )
+        }
+
+        val fcOffsets = forecast.points.mapIndexed { i, p ->
+            ChartPoint(
+                offset = Offset(xOf(i, p.timestamp), yOf(p.value)),
+                value = p.value,
+                timestamp = p.timestamp,
+                isForecast = true,
+                lower = p.lower,
+                upper = p.upper
+            )
+        }
+        forecastChartPoints.addAll(fcOffsets)
+
+        // Banda de confianza 95% (polígono: límite superior ida, inferior vuelta)
+        val band = Path()
+        forecast.points.forEachIndexed { i, p ->
+            val x = xOf(i, p.timestamp)
+            if (i == 0) band.moveTo(x, yOf(p.upper)) else band.lineTo(x, yOf(p.upper))
+        }
+        for (i in forecast.points.indices.reversed()) {
+            val p = forecast.points[i]
+            band.lineTo(xOf(i, p.timestamp), yOf(p.lower))
+        }
+        band.close()
+        drawPath(path = band, color = color.copy(alpha = 0.18f))
+
+        // Marca vertical "ahora"
+        val nowX = fcOffsets.first().offset.x
+        drawLine(
+            color = Color.White.copy(alpha = 0.35f),
+            start = Offset(nowX, 0f),
+            end = Offset(nowX, height),
+            strokeWidth = 2f,
+            pathEffect = dash
+        )
+
+        // Línea punteada de la proyección
+        for (i in 0 until fcOffsets.size - 1) {
+            drawLine(
+                color = color,
+                start = fcOffsets[i].offset,
+                end = fcOffsets[i + 1].offset,
+                strokeWidth = 4f,
+                pathEffect = dash
+            )
+        }
+        // Puntos huecos para diferenciarlos del historial
+        for (fp in fcOffsets.drop(1)) {
+            drawCircle(
+                color = color,
+                radius = 5f,
+                center = fp.offset,
+                style = Stroke(width = 3f)
+            )
+        }
+
+        // Etiqueta
+        drawText(
+            textMeasurer = textMeasurer,
+            text = "forecast",
+            style = TextStyle(color = textColor.copy(alpha = 0.6f), fontSize = 9.sp),
+            topLeft = Offset(min(nowX + 6f, width - 60f), height - padding + 4f)
+        )
     }
 
     // Draw lines
@@ -217,13 +371,15 @@ private fun DrawScope.drawInteractiveChart(
         )
     }
 
-    // Interaction Line and Tooltip
+    // Interaction Line and Tooltip (historial + proyección)
     if (touchX >= 0) {
-        val closestIndex = points.indexOfMinBy { abs(it.x - touchX) }
+        val chartPoints = points.mapIndexed { i, offset ->
+            ChartPoint(offset, values[i], metrics[i].timestamp)
+        } + forecastChartPoints
+        val closestIndex = chartPoints.indexOfMinBy { abs(it.offset.x - touchX) }
         if (closestIndex != -1) {
-            val closestPoint = points[closestIndex]
-            val actualValue = values[closestIndex]
-            val timestamp = metrics[closestIndex].timestamp
+            val selected = chartPoints[closestIndex]
+            val closestPoint = selected.offset
 
             // Vertical line
             drawLine(
@@ -241,8 +397,14 @@ private fun DrawScope.drawInteractiveChart(
             )
 
             // Tooltip text
-            val timeString = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
-            val tooltipText = "${String.format("%.1f", actualValue)}$unit \n$timeString"
+            val tooltipText = if (selected.isForecast) {
+                val timeString = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(selected.timestamp))
+                "~${String.format("%.1f", selected.value)}$unit (forecast)\n" +
+                    "${String.format("%.1f", selected.lower)}–${String.format("%.1f", selected.upper)}$unit\n$timeString"
+            } else {
+                val timeString = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(selected.timestamp))
+                "${String.format("%.1f", selected.value)}$unit \n$timeString"
+            }
 
             val textLayoutResult = textMeasurer.measure(
                 text = tooltipText,

@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tgmon.app.data.database.MetricHistoryDao
+import com.tgmon.app.data.models.ForecastResponse
 import com.tgmon.app.data.models.MetricHistory
 import com.tgmon.app.domain.repository.TgMonRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,6 +18,7 @@ data class ChartsUIState(
     val metrics: List<MetricHistory> = emptyList(),
     val filteredMetrics: List<MetricHistory> = emptyList(),
     val selectedPeriod: String = "1h",
+    val forecast: ForecastResponse? = null,
     val isLoading: Boolean = true,
     val error: String? = null
 )
@@ -37,6 +39,7 @@ class ChartsViewModel @Inject constructor(
     fun loadMetrics() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
+            refreshForecast()
             launch {
                 try {
                     repository.syncHistoryFromServer(24)
@@ -59,6 +62,19 @@ class ChartsViewModel @Inject constructor(
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message, isLoading = false) }
             }
+        }
+    }
+
+    /** Pide al servicio Python la proyección de CPU/RAM. Si falla, el gráfico sigue mostrando solo el historial. */
+    fun refreshForecast() {
+        viewModelScope.launch {
+            repository.getForecast(windowMinutes = 60, horizonMinutes = 30)
+                .onSuccess { fc ->
+                    _uiState.update { it.copy(forecast = fc.takeIf { f -> f.available }) }
+                }
+                .onFailure { e ->
+                    Log.w("ChartsViewModel", "Forecast unavailable: ${e.message}")
+                }
         }
     }
 

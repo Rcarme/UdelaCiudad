@@ -504,3 +504,81 @@ def test_ai_recommendations_llm_and_smart_cache():
         res2 = client.get("/ai/recommendations?use_llm=true", headers=AUTH_HEADER)
         assert res2.status_code == 200
         assert mock_gemini.call_count == 1
+
+
+# --- Pronóstico predictivo (/ai/forecast) ---
+
+def _seed_cpu_series(values, step_minutes=5):
+    """Inserta una serie de CPU terminando 'ahora', una muestra cada step_minutes."""
+    import time as _t
+    import db
+    conn = db.get_connection()
+    now_ms = int(_t.time() * 1000)
+    n = len(values)
+    for i, v in enumerate(values):
+        ts = now_ms - (n - 1 - i) * step_minutes * 60000
+        conn.execute(
+            "INSERT INTO metrics (timestamp, cpu_percent, memory_percent, disk_used_gb, "
+            "disk_free_gb, disk_total_gb, disk_percent) VALUES (?, ?, ?, 0, 0, 0, 0)",
+            (ts, v, 40.0),
+        )
+    conn.commit()
+
+
+def test_ai_forecast_requires_auth():
+    """GET /ai/forecast should return 401 without auth."""
+    response = client.get("/ai/forecast")
+    assert response.status_code == 401
+
+
+def test_ai_forecast_not_available_without_enough_samples():
+    """Con menos de 3 muestras el pronóstico se informa como no disponible (sin error)."""
+    response = client.get("/ai/forecast", headers=AUTH_HEADER)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["available"] is False
+    assert data["cpu"] is None
+
+
+def test_ai_forecast_rising_trend_and_eta():
+    """Una CPU creciente 2 pts/5min debe proyectarse 'rising' y dar ETA al umbral de 85%."""
+    _seed_cpu_series([20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42])
+    response = client.get("/ai/forecast?window_minutes=60&horizon_minutes=30", headers=AUTH_HEADER)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["available"] is True
+    cpu = data["cpu"]
+    assert cpu["trend"] == "rising"
+    assert abs(cpu["slope_per_min"] - 0.4) < 0.01
+    assert cpu["r_squared"] > 0.99
+    # ~42% ahora, sube 0.4/min -> 85% en ~107 min
+    assert cpu["minutes_to_threshold"] is not None
+    assert 95 < cpu["minutes_to_threshold"] < 120
+    # Puntos 0..30 min cada 5 min = 7 puntos, con intervalo ordenado lower <= value <= upper
+    assert len(cpu["points"]) == 7
+    for p in cpu["points"]:
+        assert p["lower"] <= p["value"] <= p["upper"]
+    assert cpu["points"][-1]["value"] > cpu["points"][0]["value"]
+
+
+def test_ai_forecast_stable_trend_has_no_eta():
+    """Una CPU plana debe ser 'stable' y no informar ETA al umbral."""
+    _seed_cpu_series([30, 30, 31, 30, 30, 31, 30, 30])
+    response = client.get("/ai/forecast", headers=AUTH_HEADER)
+    cpu = response.json()["cpu"]
+    assert cpu["trend"] == "stable"
+    assert cpu["minutes_to_threshold"] is None
+
+
+def test_ai_forecast_parameter_validation():
+    """window_minutes y horizon_minutes fuera de rango deben devolver 400."""
+    assert client.get("/ai/forecast?window_minutes=5", headers=AUTH_HEADER).status_code == 400
+    assert client.get("/ai/forecast?horizon_minutes=999", headers=AUTH_HEADER).status_code == 400
+
+
+def test_ai_forecast_values_are_clamped_to_0_100():
+    """Una pendiente fuerte nunca debe proyectar valores fuera de 0-100."""
+    _seed_cpu_series([50, 58, 66, 74, 82, 90])
+    response = client.get("/ai/forecast?horizon_minutes=120", headers=AUTH_HEADER)
+    for p in response.json()["cpu"]["points"]:
+        assert 0.0 <= p["lower"] <= p["upper"] <= 100.0

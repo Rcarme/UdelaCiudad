@@ -14,6 +14,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
+import com.tgmon.app.data.models.ForecastResponse
 import com.tgmon.app.data.models.HealthResponse
 import com.tgmon.app.data.models.MetricHistory
 import com.tgmon.app.domain.AlertManager
@@ -191,6 +192,9 @@ class DashboardViewModel @Inject constructor(
     private val _historicalMetrics = MutableStateFlow<List<MetricHistory>>(emptyList())
     val historicalMetrics: StateFlow<List<MetricHistory>> = _historicalMetrics
 
+    private val _forecast = MutableStateFlow<ForecastResponse?>(null)
+    val forecast: StateFlow<ForecastResponse?> = _forecast
+
     private val _servers = MutableStateFlow<List<ServerConfig>>(emptyList())
     val servers: StateFlow<List<ServerConfig>> = _servers
 
@@ -318,12 +322,25 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun syncHistory() {
+        refreshForecast()
         viewModelScope.launch {
             try {
                 repository.syncHistoryFromServer(24)
             } catch (e: Exception) {
                 android.util.Log.w("TgMon", "History sync failed: ${e.message}")
             }
+        }
+    }
+
+    fun refreshForecast() {
+        viewModelScope.launch {
+            repository.getForecast(windowMinutes = 60, horizonMinutes = 30)
+                .onSuccess { fc ->
+                    _forecast.value = fc.takeIf { it.available }
+                }
+                .onFailure { e ->
+                    android.util.Log.w("TgMon", "Forecast unavailable: ${e.message}")
+                }
         }
     }
 

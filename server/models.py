@@ -55,3 +55,30 @@ class ContainerRecommendation(BaseModel):
 
 class AIRecommendationsResponse(BaseModel):
     recommendations: list[ContainerRecommendation]
+
+
+# --- Modelos del Pronóstico Predictivo (regresión lineal sobre SQLite) ---
+
+class ForecastPoint(BaseModel):
+    timestamp: int           # epoch en milisegundos (misma unidad que /history)
+    value: float             # valor proyectado (0-100)
+    lower: float             # límite inferior del intervalo de predicción 95%
+    upper: float             # límite superior del intervalo de predicción 95%
+
+class MetricForecast(BaseModel):
+    metric: str                          # "cpu" | "memory"
+    slope_per_min: float                 # pendiente de la recta (puntos porcentuales por minuto)
+    r_squared: float                     # calidad del ajuste (0-1)
+    trend: str                           # "rising" | "falling" | "stable"
+    threshold: float                     # umbral crítico evaluado (por defecto 85%)
+    minutes_to_threshold: float | None = None  # ETA al umbral; None si no se proyecta alcanzarlo
+    points: list[ForecastPoint] = Field(default_factory=list)
+
+class ForecastResponse(BaseModel):
+    available: bool                      # False si no hay muestras suficientes
+    samples_used: int = 0
+    window_minutes: int = 60
+    horizon_minutes: int = 30
+    method: str = "ols_linear_regression"
+    cpu: MetricForecast | None = None
+    memory: MetricForecast | None = None
