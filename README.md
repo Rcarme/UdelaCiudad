@@ -88,13 +88,18 @@ graph TD
    pip install -r requirements.txt
    ```
 4. Configure environment variables in `app/.env.api` (or `.env`):
-   ```env
-   TGMON_ADMIN_TOKEN=shodan_secret_2026
-   TGMON_VIEWER_TOKEN=shodan_viewer_2026
-   TGMON_TOKEN=shodan_secret_2026
-   # Optional: Google AI Studio API Key for on-demand "✨ Analizar con IA"
-   GEMINI_API_KEY=your_gemini_api_key_here
-   ```
+   - Generate secure random tokens using OpenSSL:
+     ```bash
+     openssl rand -hex 32
+     ```
+   - Set your tokens in `app/.env.api`:
+     ```env
+     TGMON_ADMIN_TOKEN=cambiar_por_un_token_largo_y_aleatorio
+     TGMON_VIEWER_TOKEN=cambiar_por_un_token_largo_y_aleatorio
+     TGMON_TOKEN=cambiar_por_un_token_largo_y_aleatorio
+     # Optional: Google AI Studio API Key for on-demand "✨ Analizar con IA"
+     GEMINI_API_KEY=your_gemini_api_key_here
+     ```
 5. Start the server:
    ```bash
    uvicorn --app-dir app main:app --host 0.0.0.0 --port 8000

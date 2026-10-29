@@ -24,8 +24,8 @@ echo "[+] Directorio de trabajo: $APP_DIR"
 mkdir -p "$APP_DIR/app"
 
 # 2. Configurar tokens en .env.api y .env
-ADMIN_TOKEN="${TGMON_ADMIN_TOKEN:-shodan_secret_2026}"
-VIEWER_TOKEN="${TGMON_VIEWER_TOKEN:-shodan_viewer_2026}"
+ADMIN_TOKEN="${TGMON_ADMIN_TOKEN:?definir TGMON_ADMIN_TOKEN (ej: openssl rand -hex 32)}"
+VIEWER_TOKEN="${TGMON_VIEWER_TOKEN:-cambiar_por_un_token_largo_y_aleatorio}"
 
 cat << EOF > "$APP_DIR/.env.api"
 # Tokens de Autenticación TGMon v2
@@ -36,7 +36,7 @@ EOF
 
 cp "$APP_DIR/.env.api" "$APP_DIR/.env"
 cp "$APP_DIR/.env.api" "$APP_DIR/app/.env.api" 2>/dev/null || true
-echo "[+] Tokens configurados (Admin: $ADMIN_TOKEN, Viewer: $VIEWER_TOKEN)"
+echo "[+] Tokens configurados en .env.api"
 
 # 3. Escribir auth.py con soporte de 2 tokens (Admin y Viewer)
 write_auth_file() {
@@ -280,9 +280,9 @@ services:
     environment:
       - TZ=America/Argentina/Buenos_Aires
       - COMPOSE_PATH=/home/comstock/docker/media-stack/docker-compose.yml
-      - TGMON_TOKEN=${TGMON_TOKEN:-shodan_secret_2026}
-      - TGMON_ADMIN_TOKEN=${TGMON_ADMIN_TOKEN:-shodan_secret_2026}
-      - TGMON_VIEWER_TOKEN=${TGMON_VIEWER_TOKEN:-shodan_viewer_2026}
+      - TGMON_TOKEN=${TGMON_TOKEN:-}
+      - TGMON_ADMIN_TOKEN=${TGMON_ADMIN_TOKEN:?definir TGMON_ADMIN_TOKEN}
+      - TGMON_VIEWER_TOKEN=${TGMON_VIEWER_TOKEN:-}
     networks:
       - homelab
 
@@ -308,7 +308,7 @@ echo "=========================================================="
 echo "[-] Variables en el contenedor:"
 docker compose exec tgmon env | grep TOKEN || true
 
-echo -e "\n[-] Test 1: Verificar token ADMIN (shodan_secret_2026):"
+echo -e "\n[-] Test 1: Verificar token ADMIN:"
 ADMIN_RES=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8000/auth/verify || echo "ERR")
 if [ "$ADMIN_RES" = "200" ]; then
     echo "    >>> OK! HTTP 200 - Token Admin verificado correctamente."
@@ -318,7 +318,7 @@ else
     echo "    >>> ERROR: HTTP $ADMIN_RES al verificar Admin."
 fi
 
-echo -e "\n[-] Test 2: Verificar token VIEWER (shodan_viewer_2026):"
+echo -e "\n[-] Test 2: Verificar token VIEWER:"
 VIEWER_RES=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $VIEWER_TOKEN" http://localhost:8000/auth/verify || echo "ERR")
 if [ "$VIEWER_RES" = "200" ]; then
     echo "    >>> OK! HTTP 200 - Token Viewer verificado correctamente."
