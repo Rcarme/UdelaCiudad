@@ -197,7 +197,7 @@ _TOKEN_LOCK_FILE = str(_get_lock_file_path())
 EOF
 }
 
-write_auth_file "$APP_DIR/auth.py"
+# Write only to app/auth.py (single source of truth)
 write_auth_file "$APP_DIR/app/auth.py"
 echo "[+] auth.py actualizado con soporte de 2 tokens y RBAC"
 
@@ -237,7 +237,7 @@ main_patches = [
      r"await websocket.send_text(json.dumps({\"type\": \"auth_ok\", \"role\": role}))")
 ]
 
-for p in ["./main.py", "./app/main.py"]:
+for p in ["./app/main.py"]:
     patch_file(p, main_patches)
 
 # Parches para docker_api.py
@@ -257,7 +257,7 @@ docker_patches = [
      r"@router.post('/containers/{container_id}/unpause')\nasync def unpause_container(\n    container_id: str,\n    request: Request,\n    authorization: str | None = Header(None)\n):\n    check_auth(authorization, required_role=ROLE_ADMIN)")
 ]
 
-for p in ["./docker_api.py", "./app/docker_api.py"]:
+for p in ["./app/docker_api.py"]:
     patch_file(p, docker_patches)
 PYEOF
 

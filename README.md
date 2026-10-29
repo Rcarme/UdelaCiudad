@@ -97,11 +97,11 @@ graph TD
    ```
 5. Start the server:
    ```bash
-   uvicorn main:app --host 0.0.0.0 --port 8000
+   uvicorn --app-dir app main:app --host 0.0.0.0 --port 8000
    ```
-6. Run the automated backend test suite (37 tests):
+6. Run the automated backend test suite (43 tests):
    ```bash
-   pytest test_api.py -v
+   pytest tests/test_api.py -v
    ```
 
 ### Docker Compose Deployment (`server/docker-compose.yml`)
