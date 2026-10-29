@@ -65,7 +65,7 @@ Criterio de aceptación: Dos servidores de prueba con tokens distintos reciben e
 
 ### H02 Historial y caché sin separación por servidor
 
-Prioridad Alta. Evidencia: app/src/main/java/com/tgmon/app/domain/repository/TgMonRepository.kt:384
+Prioridad Alta. Evidencia: app/src/main/java/com/tgmon/app/domain/repository/TgMonRepository.kt:385
 
 La sincronización deduplica sólo por timestamp e inserta hostname vacío. MetricHistory y ContainerCache no tienen serverId; sus DAOs consultan globalmente. Al alternar perfiles pueden mezclarse curvas y contenedores, o descartarse muestras coincidentes.
 
@@ -78,7 +78,7 @@ Criterio de aceptación: A y B con igual timestamp conservan ambas muestras. La 
 
 ### H03 Revocación incompleta de sesiones
 
-Prioridad Alta. Evidencia: server/main.py:594
+Prioridad Alta. Evidencia: server/main.py:619
 
 is_token_valid se consulta durante el handshake, no en el bucle autenticado ni al transmitir. Invalidar el token bloquea nuevas peticiones, pero no desconecta las conexiones ya aceptadas. Además auth.py elimina locks mayores de 86400 segundos durante mantenimiento.
 
@@ -101,7 +101,7 @@ Criterio de aceptación: En Linux, una única partición / devuelve una entrada 
 
 ### H05 Reintentos de operaciones con efectos
 
-Prioridad Alta. Evidencia: app/src/main/java/com/tgmon/app/domain/repository/TgMonRepository.kt:332
+Prioridad Alta. Evidencia: app/src/main/java/com/tgmon/app/domain/repository/TgMonRepository.kt:333
 
 Las operaciones start, stop, restart, pause, unpause y delete usan executeWithRetry. Si Docker ejecuta y se pierde la respuesta, el repositorio puede repetir la orden por otra URL o intento. El filtro GET del interceptor no evita los reintentos de la capa repositorio.
 
@@ -124,7 +124,7 @@ Criterio de aceptación: Arranque rechazado si falta secreto. Pruebas release no
 
 ### H07 Recomendaciones basadas en ausencia de actividad instantánea
 
-Prioridad Alta. Evidencia: server/ai.py:343
+Prioridad Alta. Evidencia: server/ai.py:350
 
 Una sola lectura baja se transforma en sugerencia de pausa. Con caché vacía se consulta la lista de Docker asignando 0,0 a cada CPU desconocida. Eso convierte falta de medición en inactividad. Los nombres excluidos no constituyen un catálogo de servicios esenciales.
 
@@ -147,7 +147,7 @@ Criterio de aceptación: Una respuesta con acción no permitida, ID inventado o 
 
 ### H09 Caché de recomendaciones invalida sólo por cantidad
 
-Prioridad Media. Evidencia: server/ai.py:377
+Prioridad Media. Evidencia: server/ai.py:384
 
 Durante el TTL, dos inventarios con igual cantidad pero distinto contenido, estado o consumo reutilizan la respuesta anterior. El diagnóstico de recursos devuelve también los valores numéricos almacenados en la respuesta de caché.
 
@@ -157,7 +157,7 @@ Criterio de aceptación: Sustituir un contenedor manteniendo el total obliga a r
 
 ### H10 Latencia de IA sin presupuesto total
 
-Prioridad Media. Evidencia: server/ai.py:138
+Prioridad Media. Evidencia: server/ai.py:145
 
 El fallback REST prueba hasta cuatro modelos con timeout individual de 15 segundos, además del intento SDK. El cliente habitual tiene lectura de 30 segundos y el repositorio reintenta. Un intento de análisis puede seguir trabajando tras el abandono del cliente y multiplicar solicitudes.
 
@@ -170,7 +170,7 @@ Criterio de aceptación: Con proveedor lento, la operación termina dentro del p
 
 ### H11 Fallback de WebSocket no equivalente al REST
 
-Prioridad Media. Evidencia: app/src/main/java/com/tgmon/app/presentation/viewmodel/DashboardViewModel.kt:578
+Prioridad Media. Evidencia: app/src/main/java/com/tgmon/app/presentation/viewmodel/DashboardViewModel.kt:595
 
 El WebSocket elige la URL local mediante Elvis aunque sea una cadena vacía, y sus reintentos vuelven a construir la misma URL. El camino REST sí prueba local y remota. En uso fuera de la LAN puede perderse el streaming aunque funcione la consulta REST.
 
@@ -239,7 +239,7 @@ Criterio de aceptación: Dos compilaciones del mismo commit y parámetros mantie
 
 ### H17 Límites de privacidad de logs y prompts
 
-Prioridad Media. Evidencia: server/ai.py:391
+Prioridad Media. Evidencia: server/ai.py:398
 
 El prompt incluye nombres e IDs de contenedores; no son sólo métricas numéricas anónimas. Las expresiones regulares de redacción no garantizan cubrir todos los formatos de secretos. update_shodan.sh imprime variables que coinciden con TOKEN.
 

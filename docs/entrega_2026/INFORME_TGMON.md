@@ -195,11 +195,11 @@ La vista concentra identidad del servidor, disponibilidad, recursos, diagnóstic
 
 ![Figura 4 Historial](imagenes/03_historial.jpeg)
 
-Figura 4. Historial de rendimiento aportado por el equipo.
-La captura muestra 291 observaciones y gráficos separados de CPU, memoria y disco. El rango de CPU visible va de 6,5 % a 97,6 %; memoria, de 27,6 % a 30,8 %; disco, de 89,9 % a 94,8 %.
-La separación por recurso permite reconocer picos de CPU y el crecimiento del uso de disco sin confundir escalas. Los mínimos y máximos ayudan a contextualizar la lectura instantánea.
-Estas curvas representan datos registrados. El diagnóstico de IA se presenta en otra tarjeta y no añade una trayectoria futura a los gráficos actuales.
-Mejoras de usabilidad: fechas visibles en el eje temporal, unidades y zona horaria explícitas, cursor de consulta y diferenciación de lagunas de datos. Para comparar servidores, cada serie debe conservar una identidad inequívoca.
+Figura 4. Historial de rendimiento y pronóstico lineal OLS en vivo (297 observaciones).
+La captura muestra 297 observaciones y gráficos separados de CPU, memoria y disco junto con la proyección a +30 minutos calculada por /ai/forecast. En CPU se observa Forecast +30 min: 13,6 % -> +0,06 %/min, R² 0,23 y tiempo estimado al umbral del 85 % en ~1306 min; en memoria, Forecast +30 min: 27,8 % -> -0,00 %/min, R² 0,01.
+La separación por recurso permite reconocer picos históricos (97,6 % en CPU) y la trayectoria futura proyectada (curva punteada tras el divisor vertical de tiempo actual, banda de confianza del 95 % y umbral horizontal del 85 %).
+El pronóstico cuantitativo OLS complementa el diagnóstico heurístico y las explicaciones bajo demanda de Gemini Flash.
+Mejoras de usabilidad adicionales: fechas explícitas en el eje temporal y diferenciación de lagunas de datos. Para comparar servidores, cada serie debe conservar una identidad inequívoca.
 
 ## 9 Contenedores y registro de alertas
 
