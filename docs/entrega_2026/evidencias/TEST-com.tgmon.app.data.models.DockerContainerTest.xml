@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.tgmon.app.data.models.DockerContainerTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-10-29T00:08:52" hostname="SHODAN" time="0.011">
+  <properties/>
+  <testcase name="testRestartResponse_minimal" classname="com.tgmon.app.data.models.DockerContainerTest" time="0.005"/>
+  <testcase name="testDiskCalculation_whenTotalGiven" classname="com.tgmon.app.data.models.DockerContainerTest" time="0.001"/>
+  <testcase name="testRestartResponse_withContainerId" classname="com.tgmon.app.data.models.DockerContainerTest" time="0.001"/>
+  <testcase name="testDockerContainer_fullPropertiesDeserialization" classname="com.tgmon.app.data.models.DockerContainerTest" time="0.003"/>
+  <testcase name="testRestartResponse_withoutContainerId_doesNotThrow" classname="com.tgmon.app.data.models.DockerContainerTest" time="0.0"/>
+  <testcase name="testDiskCalculationPrecedence" classname="com.tgmon.app.data.models.DockerContainerTest" time="0.0"/>
+  <testcase name="testDockerContainer_nullAndDefaults" classname="com.tgmon.app.data.models.DockerContainerTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
