@@ -19,6 +19,7 @@
 | Integrante | Usuario Git / Email | Rol Principal en el Proyecto |
 | :--- | :--- | :--- |
 | **Carme, Rodrigo** | `@Rcarme` (`rodrigo.g.carme@gmail.com`) | Arquitecto de Software, Seguridad RBAC, Telemetría Core, Optimización Asíncrona, Integración Gemini Flash 3.8 y Despliegue en Producción (`shodan`). |
+| **Quispe, Luis Alberto** | `luisalbertoq@gmail.com` *(Pair-programming inicial subido vía `@Rcarme`)* | Co-diseño de Arquitectura Base Cliente-Servidor, Persistencia SQLite/Room, Recolección de Métricas Iniciales (`psutil`) y Base del Cliente Android. |
 | **Barragán, Roberto Carlos** | `Roberto` (`barraganrobertocarlos4@gmail.com`) | Desarrollador Backend Python (Fases 1–3 del módulo de IA: esquemas Pydantic, heurísticas predictivas y endpoints REST `/ai/*`). |
 | **Leppen, Gastón Joel** | `Gaston Joel` (`gastonleppen@gmail.com`) | Desarrollador Frontend Android / Kotlin (Fases 4–6: integración de tarjetas UI de IA, estados en ViewModels y consumo Retrofit). |
 
@@ -424,7 +425,8 @@ gitGraph
 
 | ID Historia | Historia de Usuario / Tarea Técnica | Responsable | Sprint | Prioridad | Estado | Commit / Evidencia |
 | :---: | :--- | :--- | :---: | :---: | :---: | :---: |
-| **HU-01** | Como Administrador, quiero autenticarme con tokens separados por rol (`Admin` vs `Viewer`) para compartir el monitoreo sin riesgo de que un observador apague contenedores. | **Rodrigo Carme** | Sprint 1 | Alta | ✅ Done | `170d2d2` |
+| **HU-00** | Como Equipo Base, queremos diseñar e implementar la arquitectura inicial cliente-servidor, la base SQLite/Room y el monitoreo base de telemetría (`psutil` + Android). | **Rodrigo Carme & Luis Alberto Quispe** | Sprint 1 | Crítica | ✅ Done | `20888f6` |
+| **HU-01** | Como Administrador, quiero autenticarme con tokens separados por rol (`Admin` vs `Viewer`) para compartir el monitoreo sin riesgo de que un observador apague contenedores. | **Rodrigo Carme & Luis Alberto Quispe** | Sprint 1 | Alta | ✅ Done | `170d2d2` |
 | **HU-02** | Como Administrador, quiero deslizar entre todos los discos internos y externos (`/media`, `/mnt`) y ver los 4 contenedores principales en una sola pantalla sin hacer scroll. | **Rodrigo Carme** | Sprint 1 | Alta | ✅ Done | `e122e5b` |
 | **HU-03** | Como Usuario, quiero que el backend en Python analice las métricas de CPU/RAM y los contenedores activos para exponer los endpoints `/ai/predict-spike` y `/ai/recommendations`. | **Roberto Barragán** | Sprint 2 | Alta | ✅ Done | `f225281` |
 | **HU-04** | Como Usuario móvil, quiero visualizar tarjetas de Predicción de IA y Recomendaciones de contenedores en las pantallas de Dashboard y Contenedores de la app Android. | **Gastón Leppen** | Sprint 2 | Alta | ✅ Done | `104c08f` |
@@ -436,21 +438,21 @@ gitGraph
 
 ### 8.3. Registro de Minutas de Reunión del Equipo
 
-#### Minuta de Reunión N° 1 — Definición de Idea, Alcance y Arquitectura (Fase 1)
+#### Minuta de Reunión N° 1 — Definición de Idea, Alcance y Desarrollo Base (Fase 1)
 - **Fecha**: 15 de septiembre de 2026
-- **Participantes**: Rodrigo Carme, Roberto Carlos Barragán, Gastón Joel Leppen.
+- **Participantes**: Rodrigo Carme, Luis Alberto Quispe, Roberto Carlos Barragán, Gastón Joel Leppen.
 - **Temas Tratados**:
   1. Selección de la problemática para *Programación de Vanguardia*: monitoreo móvil en tiempo real y analítica predictiva de servidores con Docker (**TGMon v2**).
   2. Definición del stack tecnológico: **Kotlin + Jetpack Compose** en Android (ecosistema JVM), **Python + FastAPI** en el servidor y persistencia relacional dual con **SQLite WAL + Room**.
   3. Diseño del esquema de seguridad basado en roles (**RBAC**: `Admin` y `Viewer`) y redacción automática de secretos en logs.
 - **Acuerdos y Asignaciones**:
-  - **Rodrigo**: Implementación de la base del servidor, autenticación RBAC, soporte multi-disco y vista compacta del Dashboard.
+  - **Rodrigo & Luis Alberto**: Desarrollo conjunto (*pair-programming*) de la arquitectura base del servidor FastAPI, persistencia SQLite/Room, autenticación RBAC y base de la aplicación Android (subido al repositorio central desde la cuenta `@Rcarme`).
   - **Roberto**: Diseño de los esquemas de datos y lógica del microservicio predictivo en Python (`server/ai.py`).
   - **Gastón**: Diseño e integración de los componentes visuales de IA y llamadas de red en la app Android.
 
 #### Minuta de Reunión N° 2 — Desarrollo de Ramas de IA (`gaston` y `Robert+}`) (Fase 2)
 - **Fecha**: 24 de octubre de 2026
-- **Participantes**: Rodrigo Carme, Roberto Carlos Barragán, Gastón Joel Leppen.
+- **Participantes**: Rodrigo Carme, Luis Alberto Quispe, Roberto Carlos Barragán, Gastón Joel Leppen.
 - **Temas Tratados**:
   1. Revisión del avance en la rama `gaston` (`104c08f`): creación de `AIPredictionCard` en `DashboardScreen.kt`, `AIRecommendationsCard` en `ContainersScreen.kt` y métodos en `TgMonApi.kt` y `TgMonRepository.kt`.
   2. Revisión del avance en la rama `Robert+}` (`5c57f1c`, `f225281`): implementación de `AIPredictionResponse`, `ContainerRecommendation` y funciones `predict_resource_spikes()` y `analyze_idle_containers()` en Python.
@@ -459,7 +461,7 @@ gitGraph
 
 #### Minuta de Reunión N° 3 — Integración en `main`, Optimización y Gemini Flash 3.8 (Fase 3)
 - **Fecha**: 25–28 de octubre de 2026
-- **Participantes**: Rodrigo Carme, Roberto Carlos Barragán, Gastón Joel Leppen.
+- **Participantes**: Rodrigo Carme, Luis Alberto Quispe, Roberto Carlos Barragán, Gastón Joel Leppen.
 - **Temas Tratados**:
   1. Fusión de las ramas `gaston` y `Robert+}` en `main` (`f8cde81`) preservando el historial completo de contribuciones.
   2. Resolución de cuello de botella en `analyze_idle_containers()`: se reemplazó la llamada bloqueante `c.stats(stream=False)` por la lectura desde el hilo `cached_containers` de `docker_api.py`, bajando el tiempo de respuesta de `~30 s` a `< 1 ms`.

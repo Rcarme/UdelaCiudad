@@ -9,7 +9,7 @@ Este documento contiene la estructura exacta de diapositivas y los comandos list
 1. **Slide 1 — Portada**:
    - **Título**: TGMon v2 — Monitoreo SRE en Tiempo Real, Orquestación Docker y Analítica Predictiva Híbrida con IA.
    - **Asignatura**: Programación de Vanguardia — Lic. en Tecnologías Informáticas (U de la Ciudad, 2026).
-   - **Integrantes**: Rodrigo Carme, Roberto Carlos Barragán, Gastón Joel Leppen.
+   - **Integrantes**: Rodrigo Carme, Luis Alberto Quispe, Roberto Carlos Barragán, Gastón Joel Leppen.
 2. **Slide 2 — El Problema y el Valor de la Solución**:
    - Suites tradicionales pesadas y reactivas vs. necesidad de control móvil inmediato y predicción temprana de cuellos de botella.
    - Desplegado en producción real (`shodan`) con `< 50 MB` de huella de RAM.

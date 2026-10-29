@@ -3,7 +3,7 @@
 **Institución**: Universidad de la Ciudad de Buenos Aires  
 **Asignatura**: Programación de Vanguardia (Ciclo Lectivo 2026)  
 **Docente**: Ing. Vázquez Alejandro  
-**Equipo**: Rodrigo Carme (`@Rcarme`), Roberto Carlos Barragán (`Roberto`), Gastón Joel Leppen (`Gaston Joel`)
+**Equipo**: Rodrigo Carme (`@Rcarme`), Luis Alberto Quispe (`luisalbertoq@gmail.com`), Roberto Carlos Barragán (`Roberto`), Gastón Joel Leppen (`Gaston Joel`)
 
 ---
 
@@ -11,7 +11,8 @@
 
 | ID | Historia de Usuario / Tarea | Responsable | Sprint | Estado | Commit Asociado |
 | :---: | :--- | :--- | :---: | :---: | :---: |
-| **HU-01** | Autenticación RBAC con tokens diferenciados (`Admin` vs `Viewer`) e invalidación de emergencia (`0o600`). | Rodrigo Carme | Sprint 1 | ✅ Done | `170d2d2` |
+| **HU-00** | Diseño e implementación de arquitectura base cliente-servidor, persistencia SQLite/Room y telemetría base (`psutil` + Android). | Rodrigo Carme & Luis Alberto Quispe | Sprint 1 | ✅ Done | `20888f6` |
+| **HU-01** | Autenticación RBAC con tokens diferenciados (`Admin` vs `Viewer`) e invalidación de emergencia (`0o600`). | Rodrigo Carme & Luis Alberto Quispe | Sprint 1 | ✅ Done | `170d2d2` |
 | **HU-02** | Detección de discos internos/externos (`/media`, `/mnt`, `/run/media`), carrusel deslizable y vista Overview de pantalla única con Top 4 contenedores. | Rodrigo Carme | Sprint 1 | ✅ Done | `e122e5b` |
 | **HU-03** | Implementación de esquemas Pydantic (`models.py`), lógica predictiva (`ai.py`) y endpoints `/ai/predict-spike` y `/ai/recommendations`. | Roberto Barragán | Sprint 2 | ✅ Done | `f225281` |
 | **HU-04** | Integración de tarjetas `AIPredictionCard` y `AIRecommendationsCard`, estados en ViewModels y llamadas Retrofit en Android. | Gastón Leppen | Sprint 2 | ✅ Done | `104c08f` |
@@ -25,7 +26,7 @@
 
 ### Minuta N° 1 — Definición de Propuesta, Dominio y Arquitectura (Fase 1)
 - **Fecha**: 15 de septiembre de 2026
-- **Asistentes**: Rodrigo Carme, Roberto Carlos Barragán, Gastón Joel Leppen.
+- **Asistentes**: Rodrigo Carme, Luis Alberto Quispe, Roberto Carlos Barragán, Gastón Joel Leppen.
 - **Orden del Día**:
   1. Definición del alcance y problemática para el Proyecto Integrador de *Programación de Vanguardia*.
   2. Elección del stack tecnológico: Front-end y lógica de cliente en **Kotlin / Jetpack Compose (JVM)**, servicios de backend y analítica predictiva en **Python / FastAPI**, y bases de datos relacionales **SQLite WAL + Room**.
@@ -34,7 +35,7 @@
 
 ### Minuta N° 2 — Seguimiento de Desarrollo Ágil en Ramas (`gaston` y `Robert+}`) (Fase 2)
 - **Fecha**: 24 de octubre de 2026
-- **Asistentes**: Rodrigo Carme, Roberto Carlos Barragán, Gastón Joel Leppen.
+- **Asistentes**: Rodrigo Carme, Luis Alberto Quispe, Roberto Carlos Barragán, Gastón Joel Leppen.
 - **Orden del Día**:
   1. Revisión de los componentes UI de IA desarrollados en la rama `gaston` (`104c08f`).
   2. Revisión de los modelos y endpoints predictivos desarrollados en la rama `Robert+}` (`5c57f1c`, `f225281`).
@@ -43,7 +44,7 @@
 
 ### Minuta N° 3 — Optimización, Integración de Gemini 3.8 Flash y Cierre de Entrega (Fase 3)
 - **Fecha**: 25–28 de octubre de 2026
-- **Asistentes**: Rodrigo Carme, Roberto Carlos Barragán, Gastón Joel Leppen.
+- **Asistentes**: Rodrigo Carme, Luis Alberto Quispe, Roberto Carlos Barragán, Gastón Joel Leppen.
 - **Orden del Día**:
   1. Merge de `Robert+}` y `gaston` en `main` (`f8cde81`).
   2. Optimización del análisis de contenedores ociosos usando el hilo `cached_containers` (`< 1 ms`) y agrupación visual de recomendaciones repetidas (`5f4349a`).
