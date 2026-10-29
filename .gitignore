@@ -1,12 +1,7 @@
 *.iml
 .gradle
 /local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+.idea/
 .DS_Store
 /build
 /captures
@@ -14,19 +9,21 @@
 .cxx
 local.properties
 
-# Server secrets
-server/.env.api
-server/venv/
-server/__pycache__/
-server/*.db
-server/*.pyc
+# Server secrets, virtualenvs, cache and SQLite databases
+.env
+.env.api
+venv/
+.audit-venv/
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
 
-# Binaries and archives
+# Binaries, archives and local scratch folders
 *.apk
 *.tar.gz
 *.zip
 deploy_shodan/
-
-.audit-venv/
 tmp/
 Agregado/

@@ -57,7 +57,7 @@ echo ""
 
 # 5. Check Python files
 echo "[5/10] Server files..."
-for f in main.py auth.py db.py docker_api.py; do
+for f in app/main.py app/auth.py app/db.py app/docker_api.py app/ai.py app/models.py; do
     if [ -f "$f" ]; then
         # Check for syntax errors
         python3 -c "import py_compile; py_compile.compile('$f', doraise=True)" 2>/dev/null
@@ -108,7 +108,7 @@ echo ""
 echo "[9/10] Testing server startup..."
 timeout 5 python3 -c "
 import sys
-sys.path.insert(0, '.')
+sys.path.insert(0, './app')
 try:
     from auth import TOKEN
     print(f'  ✅ Auth module loaded, token length: {len(TOKEN)}')
@@ -142,7 +142,7 @@ echo "  sqlite3 metrics.db \"ALTER TABLE metrics ADD COLUMN disk_total_gb REAL;\
 echo ""
 echo "  # Start server:"
 echo "  source venv/bin/activate"
-echo "  uvicorn main:app --host 0.0.0.0 --port 8000"
+echo "  uvicorn --app-dir app main:app --host 0.0.0.0 --port 8000"
 echo ""
 echo "  # Test:"
 echo "  curl http://localhost:8000/health -H \"Authorization: Bearer TU_TOKEN\""
