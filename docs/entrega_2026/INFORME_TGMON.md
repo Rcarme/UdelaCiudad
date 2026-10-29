@@ -289,7 +289,9 @@ El repositorio conserva un historial de integración de frontend y backend, adem
 
 Las minutas del repositorio registran definición de alcance el 15 de septiembre, seguimiento el 24 de octubre e integración entre el 25 y el 28 de octubre. Son registros del equipo; el historial de Git respalda cambios de código, pero no permite verificar por sí mismo asistencia o acuerdos de una reunión.
 
-El backlog incluido en docs/MINUTAS_DE_REUNION.md reúne HU00 a HU07 y responsables. Una tabla reconstruida no equivale a una captura de GitHub Projects, Trello o Jira. Para completar la evidencia de gestión corresponde adjuntar una captura auténtica del tablero y referencias a PRs si se utilizaron. No se representa aquí un tablero ficticio.
+El backlog incluido en docs/MINUTAS_DE_REUNION.md reúne HU00 a HU07 (sincronizadas como Issues #1 a #8 y Milestones Sprint 1 a 3 en https://github.com/Rcarme/UdelaCiudad/issues) junto con el tablero visual Kanban que se muestra a continuación.
+
+![Figura 7. Tablero Ágil Kanban del proyecto TGMon v2 sincronizado con las Issues #1 a #8 y Milestones en GitHub.](imagenes/tablero_kanban_tgmon.png)
 
 
 ## 13 Evaluación técnica y evolución
