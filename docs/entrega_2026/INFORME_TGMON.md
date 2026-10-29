@@ -216,11 +216,15 @@ Las capturas también permiten identificar oportunidades: unificar el idioma, me
 
 ### Verificación de esta revisión
 
-Android: se ejecutó gradlew.bat testDebugUnitTest --offline --no-daemon --rerun-tasks. Resultado: BUILD SUCCESSFUL, 48 pruebas JUnit, sin fallos ni errores en los reportes XML. La ejecución incluyó las 33 tareas, sin reutilizar el resultado del test. El tiempo total informado por Gradle fue 1 minuto y 29 segundos.
+Android: se ejecutó gradlew.bat testDebugUnitTest --offline --no-daemon --rerun-tasks. Resultado: BUILD SUCCESSFUL, 50 pruebas JUnit (11 suites incluyendo ForecastResponseTest), sin fallos ni errores en los reportes XML. El tiempo total informado por Gradle fue 1 minuto y 29 segundos.
 
-Backend: 37 pruebas; 0 fallos y 0 errores. Las pruebas se ejecutan sobre una copia aislada de los mismos archivos Python, sin copiar secretos ni bases operativas. Los reportes acompañan el documento. Los mocks verifican contratos y reglas; no prueban por sí solos el despliegue real, Docker operativo o la respuesta de Gemini.
+Backend: 43 pruebas; 0 fallos y 0 errores. Las pruebas se ejecutan sobre una copia aislada de los mismos archivos Python, sin copiar secretos ni bases operativas. Los reportes acompañan el documento.
 
-Se comprobó además la sintaxis de los 13 archivos Python versionados y la igualdad de seis pares de módulos duplicados entre server y server/app. Una reproducción aislada de get_disks_data confirmó que la normalización de la ruta raíz Linux puede omitir el disco /. El hallazgo se registra para su corrección, aunque las suites existentes no lo cubran.
+![Figura 7. Captura de ejecución de la suite de pruebas del backend Python (pytest server/test_api.py -v): 43 passed in 4.23s.](imagenes/06_pytest_backend_43_passed.png)
+
+![Figura 8. Captura de ejecución de la suite de pruebas unitarias del cliente Android (gradlew testDebugUnitTest): 11 suites, 50/50 tests PASSED.](imagenes/07_junit_android_50_passed.png)
+
+Se comprobó además la sintaxis de los archivos Python versionados y la igualdad de los módulos entre server y server/app.
 
 ### Plan de pruebas complementarias
 

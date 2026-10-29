@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.tgmon.app.data.models.RolePermissionsTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-10-29T00:08:52" hostname="SHODAN" time="0.007">
+<testsuite name="com.tgmon.app.data.models.RolePermissionsTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-10-29T00:42:18" hostname="SHODAN" time="0.006">
   <properties/>
   <testcase name="testAdminResponseDeserialization" classname="com.tgmon.app.data.models.RolePermissionsTest" time="0.001"/>
   <testcase name="testServerConfigDefaultRoleIsAdmin" classname="com.tgmon.app.data.models.RolePermissionsTest" time="0.001"/>
-  <testcase name="testServerConfigJsonSerializationRoundTrip" classname="com.tgmon.app.data.models.RolePermissionsTest" time="0.003"/>
+  <testcase name="testServerConfigJsonSerializationRoundTrip" classname="com.tgmon.app.data.models.RolePermissionsTest" time="0.002"/>
   <testcase name="testDefaultVerifyAuthResponse" classname="com.tgmon.app.data.models.RolePermissionsTest" time="0.0"/>
-  <testcase name="testViewerResponseDeserialization" classname="com.tgmon.app.data.models.RolePermissionsTest" time="0.001"/>
-  <testcase name="testServerConfigLegacyJsonWithoutRoleDefaultsToAdmin" classname="com.tgmon.app.data.models.RolePermissionsTest" time="0.0"/>
+  <testcase name="testViewerResponseDeserialization" classname="com.tgmon.app.data.models.RolePermissionsTest" time="0.0"/>
+  <testcase name="testServerConfigLegacyJsonWithoutRoleDefaultsToAdmin" classname="com.tgmon.app.data.models.RolePermissionsTest" time="0.001"/>
   <testcase name="testServerConfigViewerRole" classname="com.tgmon.app.data.models.RolePermissionsTest" time="0.0"/>
-  <testcase name="testServerConfigAdminRole" classname="com.tgmon.app.data.models.RolePermissionsTest" time="0.001"/>
+  <testcase name="testServerConfigAdminRole" classname="com.tgmon.app.data.models.RolePermissionsTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

@@ -19,7 +19,7 @@ No se realizaron cambios al código de producción ni operaciones sobre contened
 
 ### Resultados de pruebas
 
-Android: 48 pruebas, cero fallos y errores, ejecución completa con --rerun-tasks. Backend: 37 pruebas; 0 fallos y 0 errores. No se ejecutaron pruebas instrumentadas en dispositivo ni una llamada real a Gemini. Una suite aprobada no invalida los hallazgos que no cubre.
+Android: 48 pruebas, cero fallos y errores, ejecución completa con --rerun-tasks. Backend: 43 pruebas; 0 fallos y 0 errores. No se ejecutaron pruebas instrumentadas en dispositivo ni una llamada real a Gemini. Una suite aprobada no invalida los hallazgos que no cubre.
 
 
 ## Fortalezas y decisiones que conviene conservar

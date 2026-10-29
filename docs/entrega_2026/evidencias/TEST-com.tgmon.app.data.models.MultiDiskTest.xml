@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.tgmon.app.data.models.MultiDiskTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-29T00:08:52" hostname="SHODAN" time="0.03">
+<testsuite name="com.tgmon.app.data.models.MultiDiskTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-10-29T00:42:18" hostname="SHODAN" time="0.026">
   <properties/>
-  <testcase name="testHealthResponse_multiDiskDeserialization" classname="com.tgmon.app.data.models.MultiDiskTest" time="0.004"/>
-  <testcase name="testHealthResponse_legacyPayloadWithoutDisks" classname="com.tgmon.app.data.models.MultiDiskTest" time="0.0"/>
-  <testcase name="testMultiDisk_highestThresholdDetection" classname="com.tgmon.app.data.models.MultiDiskTest" time="0.021"/>
+  <testcase name="testHealthResponse_multiDiskDeserialization" classname="com.tgmon.app.data.models.MultiDiskTest" time="0.003"/>
+  <testcase name="testHealthResponse_legacyPayloadWithoutDisks" classname="com.tgmon.app.data.models.MultiDiskTest" time="0.001"/>
+  <testcase name="testMultiDisk_highestThresholdDetection" classname="com.tgmon.app.data.models.MultiDiskTest" time="0.018"/>
   <testcase name="testOverview_top4ContainersSorting" classname="com.tgmon.app.data.models.MultiDiskTest" time="0.002"/>
   <testcase name="testDiskInfo_displayNameFormatting" classname="com.tgmon.app.data.models.MultiDiskTest" time="0.002"/>
   <system-out><![CDATA[]]></system-out>
