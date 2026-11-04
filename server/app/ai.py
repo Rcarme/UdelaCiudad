@@ -1,36 +1,50 @@
+import json
 import logging
-import os
 import math
+import os
 import re
+import threading
 import time
+import urllib.error
+import urllib.request
 import psutil
 
-try:
-    from db import get_history
-    from models import (
-        AIPredictionResponse,
-        ContainerRecommendation,
-        AIRecommendationsResponse,
-        ForecastPoint,
-        MetricForecast,
-        ForecastResponse,
-    )
-except ImportError:
-    from app.db import get_history
-    from app.models import (
-        AIPredictionResponse,
-        ContainerRecommendation,
-        AIRecommendationsResponse,
-        ForecastPoint,
-        MetricForecast,
-        ForecastResponse,
-    )
+from db import get_history
+from models import (
+    AIPredictionResponse,
+    AIRecommendationsResponse,
+    ContainerRecommendation,
+    ForecastPoint,
+    ForecastResponse,
+    MetricForecast,
+)
 
 logger = logging.getLogger("tgmon.ai")
 
-# --- Configuración de Gemini Flash y Caché Inteligente ---
-GEMINI_MODEL = "gemini-3.8-flash"
-LLM_CACHE_TTL_SECONDS = 120.0  # 2 minutos de caché inteligente para proteger cuota gratuita
+# --- Umbrales y Constantes de Configuración ---
+CRITICAL_USAGE_THRESHOLD = 85.0
+MODERATE_USAGE_THRESHOLD = 70.0
+SPIKE_DELTA_THRESHOLD = 20.0
+SPIKE_WINDOW_MINUTES = 15
+IDLE_CPU_THRESHOLD = 0.1
+
+FORECAST_CRITICAL_THRESHOLD = CRITICAL_USAGE_THRESHOLD
+FORECAST_MIN_SAMPLES = 3
+FORECAST_ETA_MAX_MINUTES = 24 * 60
+FORECAST_MIN_R_SQUARED_FOR_ETA = 0.25
+
+ESSENTIAL_CONTAINER_TOKENS = frozenset({"system", "proxy", "core", "agent", "tgmon"})
+
+GEMINI_MODEL = os.getenv("TGMON_GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_FALLBACK_MODELS = (
+    GEMINI_MODEL,
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
+)
+GEMINI_REST_TIMEOUT_SECONDS = 6.0
+LLM_CACHE_TTL_SECONDS = 120.0
+
+_cache_lock = threading.Lock()
 
 _llm_prediction_cache: dict = {
     "timestamp": 0.0,
@@ -49,64 +63,83 @@ _SENSITIVE_PATTERN = re.compile(
     r'(?i)(password|passwd|secret|token|api[_-]?key|credential|auth)\s*[:=]\s*[^\s\'"`,;]+'
 )
 
+# Valores críticos exactos de t de Student (dos colas, 95% -> alpha/2 = 0.025) para df = 1..30
+_STUDENT_T_975: dict[int, float] = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
+    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
+    11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.131,
+    16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
+    21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
+    26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
+}
+
+
+def _student_t_975(df: int) -> float:
+    """Devuelve el cuantil t_{0.975, df} de Student (o 1.96 para df > 30)."""
+    if df <= 0:
+        return 1.96
+    return _STUDENT_T_975.get(df, 1.96)
+
 
 def _sanitize_prompt(text: str) -> str:
     """Enmascara cualquier posible secreto o token antes de enviarlo a la IA."""
-    try:
-        return _SENSITIVE_PATTERN.sub(r"\1=***REDACTED***", text)
-    except Exception:
-        return text
+    return _SENSITIVE_PATTERN.sub(r"\1=***REDACTED***", text)
+
+
+def _is_essential_container(name: str) -> bool:
+    """Determina si un contenedor es esencial separando su nombre por delimitadores."""
+    tokens = set(re.split(r"[^a-z0-9]+", name.lower()))
+    return bool(tokens & ESSENTIAL_CONTAINER_TOKENS)
 
 
 def clear_ai_cache() -> None:
-    """Limpia el caché inteligente de IA (útil para tests y recargas forzadas)."""
-    _llm_prediction_cache["timestamp"] = 0.0
-    _llm_prediction_cache["response"] = None
-    _llm_recommendations_cache["timestamp"] = 0.0
-    _llm_recommendations_cache["response"] = None
+    """Limpia de forma thread-safe todos los campos del caché inteligente de IA."""
+    with _cache_lock:
+        _llm_prediction_cache.update({
+            "timestamp": 0.0,
+            "cpu_at_cache": 0.0,
+            "ram_at_cache": 0.0,
+            "response": None,
+        })
+        _llm_recommendations_cache.update({
+            "timestamp": 0.0,
+            "container_count": -1,
+            "response": None,
+        })
 
 
-def _call_gemini_structured(prompt: str, schema_model):
-    """
-    Invoca a Gemini Flash bajo demanda con Structured Output (JSON Schema de Pydantic).
-    Usa el SDK oficial google-genai o urllib.request nativo de Python (sin requerir pip extra).
-    Retorna None si no hay GEMINI_API_KEY o si ocurre cualquier error de red/cuota.
-    """
-    import json
-    import urllib.request
-    import urllib.error
-
+def _get_api_key() -> str:
+    """Obtiene GEMINI_API_KEY del entorno o de archivos .env locales."""
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        # Leer en vivo desde .env.api o .env (por si docker-compose inyectó GEMINI_API_KEY="" vacío)
-        for candidate in (
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.api"),
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"),
-        ):
-            try:
-                if os.path.exists(candidate):
-                    with open(candidate, "r", encoding="utf-8") as f:
-                        for line in f:
-                            s = line.strip()
-                            if s.startswith("GEMINI_API_KEY="):
-                                val = s.split("=", 1)[1].strip().strip('"').strip("'")
-                                if val and val != "tu_clave_aqui" and val != "your_gemini_api_key_here":
-                                    api_key = val
-                                    break
-                if api_key:
-                    break
-            except Exception:
-                pass
+    if api_key:
+        return api_key
 
-    if not api_key:
-        logger.warning("GEMINI_API_KEY vacía o no definida en .env.api/.env; usando motor heurístico local.")
-        return None
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = (
+        os.path.join(base_dir, ".env.api"),
+        os.path.join(base_dir, ".env"),
+        os.path.join(base_dir, "..", ".env"),
+    )
+    placeholders = {"tu_clave_aqui", "your_gemini_api_key_here"}
 
-    safe_prompt = _sanitize_prompt(prompt)
-    schema_dict = schema_model.model_json_schema()
+    for candidate in candidates:
+        try:
+            if os.path.exists(candidate):
+                with open(candidate, "r", encoding="utf-8") as f:
+                    for line in f:
+                        s = line.strip()
+                        if s.startswith("GEMINI_API_KEY="):
+                            val = s.split("=", 1)[1].strip().strip('"').strip("'")
+                            if val and val not in placeholders:
+                                return val
+        except OSError as exc:
+            logger.debug("No se pudo leer %s: %s", candidate, exc)
 
-    # 1. Intentar con el SDK oficial google-genai si está instalado
+    return ""
+
+
+def _call_gemini_sdk(api_key: str, safe_prompt: str, schema_dict: dict, schema_model):
+    """Intenta invocar Gemini mediante el SDK oficial google-genai si está instalado."""
     try:
         from google import genai
 
@@ -126,37 +159,39 @@ def _call_gemini_structured(prompt: str, schema_model):
     except ImportError:
         pass
     except Exception as sdk_err:
-        logger.debug(f"SDK google-genai no disponible o falló ({sdk_err}), probando cliente REST nativo...")
+        logger.debug("SDK google-genai falló (%s), usando cliente REST...", sdk_err)
+    return None
 
-    # 2. Cliente REST nativo con urllib.request (cero dependencias externas en el contenedor)
+
+def _call_gemini_rest(api_key: str, safe_prompt: str, schema_dict: dict, schema_model):
+    """Invoca el endpoint REST de Gemini con timeout acotado por modelo."""
     headers = {
         "Content-Type": "application/json",
         "x-goog-api-key": api_key,
     }
-
-    # 2. Endpoint REST de Google AI Studio con urllib.request (cero dependencias externas)
     schema_prompt = (
         f"{safe_prompt}\n\n"
         f"Responde ÚNICAMENTE con un objeto JSON válido que cumpla este esquema exacto:\n"
         f"{json.dumps(schema_dict, ensure_ascii=False)}"
     )
+    payload = json.dumps({
+        "contents": [{"parts": [{"text": schema_prompt}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "temperature": 0.2,
+        },
+    }).encode("utf-8")
 
     last_err = None
-    for model_name in ("gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-flash-latest"):
+    seen_models: set[str] = set()
+    for model_name in GEMINI_FALLBACK_MODELS:
+        if model_name in seen_models:
+            continue
+        seen_models.add(model_name)
         try:
-            url_v1b = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-            gen_config: dict = {
-                "responseMimeType": "application/json",
-                "temperature": 0.2,
-            }
-
-            payload_v1b = json.dumps({
-                "contents": [{"parts": [{"text": schema_prompt}]}],
-                "generationConfig": gen_config,
-            }).encode("utf-8")
-
-            req = urllib.request.Request(url_v1b, data=payload_v1b, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=15.0) as resp:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+            req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=GEMINI_REST_TIMEOUT_SECONDS) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 candidates = data.get("candidates", [])
                 if candidates:
@@ -167,11 +202,11 @@ def _call_gemini_structured(prompt: str, schema_model):
         except urllib.error.HTTPError as http_err:
             err_body = ""
             try:
-                err_body = http_err.read().decode("utf-8")[:160]
-            except Exception:
+                err_body = http_err.read().decode("utf-8", errors="replace")[:160]
+            except OSError:
                 pass
             last_err = f"HTTP {http_err.code} en {model_name} ({err_body})"
-            if http_err.code in (404, 400, 429, 503):
+            if http_err.code in (400, 404, 429, 503):
                 continue
             break
         except Exception as model_err:
@@ -179,10 +214,28 @@ def _call_gemini_structured(prompt: str, schema_model):
             continue
 
     if last_err:
-        logger.warning(f"Fallback local activado tras error REST en Gemini: {last_err}")
+        logger.warning("Fallback local activado tras error REST en Gemini: %s", last_err)
     return None
 
-    return None
+
+def _call_gemini_structured(prompt: str, schema_model):
+    """
+    Invoca a Gemini Flash bajo demanda con validación Pydantic.
+    Retorna None si no hay GEMINI_API_KEY o si ocurre cualquier error de red/cuota.
+    """
+    api_key = _get_api_key()
+    if not api_key:
+        logger.warning("GEMINI_API_KEY no definida; usando motor heurístico local.")
+        return None
+
+    safe_prompt = _sanitize_prompt(prompt)
+    schema_dict = schema_model.model_json_schema()
+
+    sdk_result = _call_gemini_sdk(api_key, safe_prompt, schema_dict, schema_model)
+    if sdk_result is not None:
+        return sdk_result
+
+    return _call_gemini_rest(api_key, safe_prompt, schema_dict, schema_model)
 
 
 def predict_resource_spikes(use_llm: bool = False) -> AIPredictionResponse:
@@ -191,33 +244,38 @@ def predict_resource_spikes(use_llm: bool = False) -> AIPredictionResponse:
     - Por defecto (use_llm=False): usa el motor heurístico local en <1ms sin consumir cuota.
     - Bajo demanda (use_llm=True): consulta a Gemini Flash con caché inteligente y fallback local.
     """
-    # 1. Obtener uso instantáneo del sistema
     current_cpu = psutil.cpu_percent(interval=None)
     current_ram = psutil.virtual_memory().percent
 
-    # 2. Consultar historial reciente en SQLite (última hora)
     history = get_history(hours=1)
 
-    # 3. Evaluar umbral dinámico (tendencia de crecimiento incluyendo lectura actual)
     spike_detected = False
-    rate_of_change = 0.0
-    cpu_values = []
+    cpu_delta = 0.0
+    ram_delta = 0.0
+    cpu_values: list[float] = []
 
     if history:
-        recent_samples = history[-5:]
-        cpu_values = [h.get("cpu_percent", h.get("cpu", 0.0)) for h in recent_samples]
+        now_ms = int(time.time() * 1000)
+        window_cutoff = now_ms - (SPIKE_WINDOW_MINUTES * 60000)
+        window_samples = [
+            h for h in history
+            if h.get("timestamp", 0) >= window_cutoff
+        ]
+        if not window_samples:
+            window_samples = history[-5:]
+
+        cpu_values = [float(h.get("cpu_percent", h.get("cpu", 0.0)) or 0.0) for h in window_samples]
+        ram_values = [float(h.get("memory_percent", h.get("ram", 0.0)) or 0.0) for h in window_samples]
         cpu_values.append(current_cpu)
+        ram_values.append(current_ram)
 
         if len(cpu_values) >= 2:
-            initial_cpu = cpu_values[0]
-            latest_cpu = cpu_values[-1]
-            rate_of_change = latest_cpu - initial_cpu
-
-            if rate_of_change >= 20.0:
+            cpu_delta = cpu_values[-1] - cpu_values[0]
+            ram_delta = ram_values[-1] - ram_values[0]
+            if cpu_delta >= SPIKE_DELTA_THRESHOLD or ram_delta >= SPIKE_DELTA_THRESHOLD:
                 spike_detected = True
 
-    # 4. Calcular respuesta heurística local base (siempre lista en <1ms como fallback)
-    if current_cpu >= 85.0 or current_ram >= 85.0:
+    if current_cpu >= CRITICAL_USAGE_THRESHOLD or current_ram >= CRITICAL_USAGE_THRESHOLD:
         risk_level = "critical"
         message = (
             f"Alerta Crítica: Recursos saturados (CPU: {current_cpu}%, RAM: {current_ram}%). "
@@ -225,11 +283,13 @@ def predict_resource_spikes(use_llm: bool = False) -> AIPredictionResponse:
         )
     elif spike_detected:
         risk_level = "high"
+        dominant_metric = "CPU" if cpu_delta >= ram_delta else "RAM"
+        dominant_delta = max(cpu_delta, ram_delta)
         message = (
-            f"Alerta Predictiva: Crecimiento acelerado de CPU detectado (+{rate_of_change:.1f}%). "
+            f"Alerta Predictiva: Crecimiento acelerado de {dominant_metric} detectado (+{dominant_delta:.1f}%). "
             f"Posible cuello de botella en los próximos minutos."
         )
-    elif current_cpu >= 70.0 or current_ram >= 70.0:
+    elif current_cpu >= MODERATE_USAGE_THRESHOLD or current_ram >= MODERATE_USAGE_THRESHOLD:
         risk_level = "medium"
         message = (
             f"Consumo Moderado: Uso elevado sostenido (CPU: {current_cpu}%, RAM: {current_ram}%). "
@@ -249,22 +309,21 @@ def predict_resource_spikes(use_llm: bool = False) -> AIPredictionResponse:
     if not use_llm:
         return heuristic_response
 
-    # 5. Modo bajo demanda (use_llm=True): revisar caché inteligente primero
     now = time.time()
-    cached_resp = _llm_prediction_cache.get("response")
-    cache_age = now - _llm_prediction_cache.get("timestamp", 0.0)
-    cpu_diff = abs(current_cpu - _llm_prediction_cache.get("cpu_at_cache", 0.0))
-    ram_diff = abs(current_ram - _llm_prediction_cache.get("ram_at_cache", 0.0))
+    with _cache_lock:
+        cached_resp = _llm_prediction_cache.get("response")
+        cache_age = now - _llm_prediction_cache.get("timestamp", 0.0)
+        cpu_diff = abs(current_cpu - _llm_prediction_cache.get("cpu_at_cache", 0.0))
+        ram_diff = abs(current_ram - _llm_prediction_cache.get("ram_at_cache", 0.0))
 
     if cached_resp is not None and cache_age < LLM_CACHE_TTL_SECONDS and cpu_diff < 10.0 and ram_diff < 10.0:
         return cached_resp
 
-    # 6. Consultar Gemini Flash con contexto real y fallback transparente
     prompt = (
         "Eres un ingeniero SRE experto monitoreando un servidor Linux con Docker (TGMon).\n"
         f"Métricas actuales: CPU={current_cpu:.1f}%, RAM={current_ram:.1f}%.\n"
         f"Serie reciente de CPU: {cpu_values if cpu_values else [current_cpu]}.\n"
-        f"Variación reciente de CPU: {rate_of_change:+.1f}%.\n"
+        f"Variación reciente: CPU={cpu_delta:+.1f}%, RAM={ram_delta:+.1f}%.\n"
         "Genera un diagnóstico conciso en español (máximo 180 caracteres en 'message', "
         "iniciando con '✨ [Gemini IA] '). Clasifica 'risk_level' estrictamente en: "
         "'low', 'medium', 'high' o 'critical'. Incluye cpu_usage y memory_usage actuales."
@@ -281,10 +340,11 @@ def predict_resource_spikes(use_llm: bool = False) -> AIPredictionResponse:
             cpu_usage=round(current_cpu, 1),
             memory_usage=round(current_ram, 1),
         )
-        _llm_prediction_cache["timestamp"] = now
-        _llm_prediction_cache["cpu_at_cache"] = current_cpu
-        _llm_prediction_cache["ram_at_cache"] = current_ram
-        _llm_prediction_cache["response"] = final_res
+        with _cache_lock:
+            _llm_prediction_cache["timestamp"] = now
+            _llm_prediction_cache["cpu_at_cache"] = current_cpu
+            _llm_prediction_cache["ram_at_cache"] = current_ram
+            _llm_prediction_cache["response"] = final_res
         return final_res
 
     return heuristic_response
@@ -294,19 +354,14 @@ def analyze_idle_containers(use_llm: bool = False) -> AIRecommendationsResponse:
     """
     Examina los contenedores activos de Docker para detectar servicios inactivos
     y generar sugerencias de optimización orientadas a la acción (pause/stop).
-    - Por defecto (use_llm=False): usa el caché asíncrono local en <1ms sin consumir cuota.
-    - Bajo demanda (use_llm=True): consulta a Gemini Flash con caché inteligente y fallback local.
     """
-    recommendations = []
-    containers_data = []
+    recommendations: list[ContainerRecommendation] = []
+    containers_data: list[dict] = []
 
     try:
-        try:
-            from docker_api import cached_containers, _cache_lock, client
-        except ImportError:
-            from app.docker_api import cached_containers, _cache_lock, client
+        import docker_api
 
-        if not client:
+        if not docker_api.client:
             return AIRecommendationsResponse(
                 recommendations=[
                     ContainerRecommendation(
@@ -318,49 +373,53 @@ def analyze_idle_containers(use_llm: bool = False) -> AIRecommendationsResponse:
                 ]
             )
 
-        # 1. Obtener contenedores desde el caché de TGMon (no bloqueante, ultra rápido)
+        # 1. Obtener contenedores mediante función thread-safe del módulo docker_api
         try:
-            with _cache_lock:
-                containers_data = list(cached_containers)
-        except Exception:
+            containers_data = docker_api.get_cached_containers()
+        except Exception as exc:
+            logger.debug("Error leyendo caché de contenedores: %s", exc)
             containers_data = []
 
-        # 2. Si el caché aún está vacío (recién arrancó el server), consultar lista rápida
-        if not containers_data and client:
+        # 2. Si el caché aún está vacío, listar contenedores marcando cpu_percent=None
+        #    para NO recomendar pausas sin mediciones reales de CPU.
+        if not containers_data and docker_api.client:
             try:
-                for c in client.containers.list():
+                for c in docker_api.client.containers.list():
                     containers_data.append({
                         "id": c.id,
                         "name": c.name,
                         "status": c.status.lower(),
-                        "cpu_percent": 0.0,
+                        "cpu_percent": None,
                     })
-            except Exception as e:
-                logger.debug(f"Error listando contenedores: {e}")
+            except Exception as exc:
+                logger.debug("Error listando contenedores en frío: %s", exc)
 
-        # 3. Analizar contenedores heurísticamente (fallback base)
+        # 3. Analizar contenedores heurísticamente sólo cuando existe medición real de CPU
         for c in containers_data:
             status = str(c.get("status", "")).lower()
+            if status != "running":
+                continue
 
-            if status == "running":
-                name = str(c.get("name", ""))
-                cid = str(c.get("id", ""))[:12]
-                cpu_percent = float(c.get("cpu_percent", 0.0))
+            cpu_raw = c.get("cpu_percent")
+            if cpu_raw is None:
+                continue
 
-                if cpu_percent < 0.1:
-                    name_lower = name.lower()
-                    if not any(k in name_lower for k in ["system", "proxy", "core", "agent", "tgmon"]):
-                        recommendations.append(
-                            ContainerRecommendation(
-                                container_id=cid,
-                                container_name=name,
-                                recommended_action="pause",
-                                reason=f"Actividad nula de CPU ({cpu_percent:.1f}%). Se sugiere pausar para liberar recursos.",
-                            )
-                        )
+            cpu_percent = float(cpu_raw)
+            name = str(c.get("name", ""))
+            cid = str(c.get("id", ""))[:12]
 
-    except Exception as e:
-        logger.warning(f"Error en análisis de IA de contenedores: {e}")
+            if cpu_percent < IDLE_CPU_THRESHOLD and not _is_essential_container(name):
+                recommendations.append(
+                    ContainerRecommendation(
+                        container_id=cid,
+                        container_name=name,
+                        recommended_action="pause",
+                        reason=f"Actividad nula de CPU ({cpu_percent:.1f}%). Se sugiere pausar para liberar recursos.",
+                    )
+                )
+
+    except Exception as exc:
+        logger.warning("Error en análisis de IA de contenedores: %s", exc)
 
     if not recommendations:
         recommendations.append(
@@ -377,19 +436,19 @@ def analyze_idle_containers(use_llm: bool = False) -> AIRecommendationsResponse:
     if not use_llm:
         return heuristic_result
 
-    # 4. Modo bajo demanda (use_llm=True): revisar caché inteligente primero
     now = time.time()
-    cached_recs = _llm_recommendations_cache.get("response")
-    cache_age = now - _llm_recommendations_cache.get("timestamp", 0.0)
-    same_count = len(containers_data) == _llm_recommendations_cache.get("container_count", -1)
+    with _cache_lock:
+        cached_recs = _llm_recommendations_cache.get("response")
+        cache_age = now - _llm_recommendations_cache.get("timestamp", 0.0)
+        same_count = len(containers_data) == _llm_recommendations_cache.get("container_count", -1)
 
     if cached_recs is not None and cache_age < LLM_CACHE_TTL_SECONDS and same_count:
         return cached_recs
 
-    # 5. Consultar Gemini Flash si hay contenedores para analizar
-    if containers_data:
+    measured_containers = [c for c in containers_data if c.get("cpu_percent") is not None]
+    if measured_containers:
         summary_lines = []
-        for c in containers_data[:25]:
+        for c in measured_containers[:25]:
             cid = str(c.get("id", ""))[:12]
             cname = str(c.get("name", ""))
             cstatus = str(c.get("status", ""))
@@ -397,12 +456,13 @@ def analyze_idle_containers(use_llm: bool = False) -> AIRecommendationsResponse:
             cmem = float(c.get("memory_mb", 0.0))
             summary_lines.append(f"- id={cid}, name={cname}, status={cstatus}, cpu={ccpu:.1f}%, ram={cmem:.1f}MB")
 
+        essential_list_str = ", ".join(sorted(ESSENTIAL_CONTAINER_TOKENS))
         prompt = (
             "Eres un ingeniero SRE optimizando contenedores Docker en un servidor Linux.\n"
             "Lista de contenedores actuales:\n"
             + "\n".join(summary_lines)
             + "\n\nGenera recomendaciones de optimización en español. "
-            "No sugieras pausar contenedores esenciales ('system', 'proxy', 'core', 'agent', 'tgmon'). "
+            f"No sugieras pausar contenedores esenciales ({essential_list_str}). "
             "Para contenedores en 'running' con 0.0% de CPU no esenciales, sugiere recommended_action='pause' "
             "y usa exactamente la misma frase en 'reason' para los que compartan el mismo diagnóstico "
             "(iniciando con '✨ [Gemini IA] '), de modo que la interfaz pueda agruparlos. "
@@ -412,20 +472,13 @@ def analyze_idle_containers(use_llm: bool = False) -> AIRecommendationsResponse:
 
         llm_recs = _call_gemini_structured(prompt, AIRecommendationsResponse)
         if llm_recs is not None and llm_recs.recommendations:
-            _llm_recommendations_cache["timestamp"] = now
-            _llm_recommendations_cache["container_count"] = len(containers_data)
-            _llm_recommendations_cache["response"] = llm_recs
+            with _cache_lock:
+                _llm_recommendations_cache["timestamp"] = now
+                _llm_recommendations_cache["container_count"] = len(containers_data)
+                _llm_recommendations_cache["response"] = llm_recs
             return llm_recs
 
     return heuristic_result
-
-
-# ---------------------------------------------------------------------------
-# Pronóstico de series temporales (regresión lineal por mínimos cuadrados)
-# ---------------------------------------------------------------------------
-FORECAST_CRITICAL_THRESHOLD = 85.0   # mismo umbral "critical" que predict_resource_spikes
-FORECAST_MIN_SAMPLES = 3
-FORECAST_ETA_MAX_MINUTES = 24 * 60   # no se informa un ETA más lejano que 24 h
 
 
 def _linear_forecast(
@@ -437,11 +490,10 @@ def _linear_forecast(
     threshold: float = FORECAST_CRITICAL_THRESHOLD,
 ) -> MetricForecast | None:
     """
-    Ajusta y = a + b*x por mínimos cuadrados (OLS), con x en minutos relativos a "ahora"
-    (x <= 0 para el pasado), y proyecta hasta `horizon_minutes`.
-    El intervalo de predicción al 95% usa el error estándar de los residuos:
-        y_hat +/- 1.96 * s * sqrt(1 + 1/n + (x - x_media)^2 / Sxx)
-    Devuelve None si la serie es degenerada (menos de 3 puntos o todos con el mismo timestamp).
+    Ajusta y = a + b*x por mínimos cuadrados ordinarios (OLS), con x en minutos
+    relativos a "ahora" (x <= 0 para el pasado), y proyecta hasta `horizon_minutes`.
+    El intervalo de predicción al 95% utiliza el cuantil t de Student con n-2 grados de libertad:
+        y_hat +/- t_{0.975, n-2} * s * sqrt(1 + 1/n + (x - x_media)^2 / Sxx)
     """
     n = len(samples)
     if n < FORECAST_MIN_SAMPLES:
@@ -458,13 +510,14 @@ def _linear_forecast(
 
     sxy = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys))
     slope = sxy / sxx
-    intercept = y_mean - slope * x_mean          # valor ajustado en x = 0 (ahora)
+    intercept = y_mean - slope * x_mean
 
     ss_tot = sum((y - y_mean) ** 2 for y in ys)
     ss_res = sum((y - (intercept + slope * x)) ** 2 for x, y in zip(xs, ys))
     r_squared = 1.0 - (ss_res / ss_tot) if ss_tot > 1e-9 else 0.0
     r_squared = max(0.0, min(1.0, r_squared))
     resid_std = math.sqrt(ss_res / (n - 2)) if n > 2 else 0.0
+    t_crit = _student_t_975(n - 2)
 
     def clamp(v: float) -> float:
         return max(0.0, min(100.0, v))
@@ -472,7 +525,7 @@ def _linear_forecast(
     points: list[ForecastPoint] = []
     for minute in range(0, horizon_minutes + 1, step_minutes):
         y_hat = intercept + slope * minute
-        margin = 1.96 * resid_std * math.sqrt(1.0 + 1.0 / n + ((minute - x_mean) ** 2) / sxx)
+        margin = t_crit * resid_std * math.sqrt(1.0 + 1.0 / n + ((minute - x_mean) ** 2) / sxx)
         points.append(
             ForecastPoint(
                 timestamp=int(now_ms + minute * 60000),
@@ -491,7 +544,7 @@ def _linear_forecast(
     minutes_to_threshold = None
     if intercept >= threshold:
         minutes_to_threshold = 0.0
-    elif slope > 1e-6:
+    elif trend == "rising" and slope > 1e-6 and r_squared >= FORECAST_MIN_R_SQUARED_FOR_ETA:
         eta = (threshold - intercept) / slope
         if eta <= FORECAST_ETA_MAX_MINUTES:
             minutes_to_threshold = round(eta, 1)
@@ -514,7 +567,7 @@ def forecast_resources(
 ) -> ForecastResponse:
     """
     Proyecta CPU y RAM a partir de las últimas `window_minutes` de telemetría en SQLite.
-    Es 100% local (sin LLM, sin cuota de API): corre en milisegundos.
+    100% local (sin LLM, sin cuota de API): corre en milisegundos.
     """
     now_ms = int(time.time() * 1000)
     history = get_history(hours=max(1, math.ceil(window_minutes / 60)))

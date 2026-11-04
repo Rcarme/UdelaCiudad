@@ -582,3 +582,70 @@ def test_ai_forecast_values_are_clamped_to_0_100():
     response = client.get("/ai/forecast?horizon_minutes=120", headers=AUTH_HEADER)
     for p in response.json()["cpu"]["points"]:
         assert 0.0 <= p["lower"] <= p["upper"] <= 100.0
+
+
+def test_non_ascii_token_returns_401_not_500():
+    """Tokens with non-ASCII UTF-8 characters must return 401/None instead of raising TypeError."""
+    from auth import get_token_role
+    from fastapi import HTTPException
+
+    assert get_token_role("token-con-ñ-áéíóú-🚀") is None
+    with pytest.raises(HTTPException) as exc_info:
+        check_auth("Bearer token-con-ñ-áéíóú-🚀")
+    assert exc_info.value.status_code == 401
+
+
+def test_bearer_scheme_case_insensitive():
+    """RFC 7235 Bearer scheme prefix should be matched case-insensitively."""
+    with patch("main.get_health_data") as mock_health:
+        mock_health.return_value = {
+            "hostname": "test",
+            "cpu_percent": 10.0,
+            "memory_percent": 20.0,
+            "disk_used_gb": 10.0,
+            "disk_free_gb": 90.0,
+            "disk_total_gb": 100.0,
+        }
+        response = client.get("/health", headers={"Authorization": f"bearer {TOKEN}"})
+        assert response.status_code == 200
+
+
+def test_empty_cache_does_not_recommend_pausing_containers():
+    """When container stats cache is empty, fallback listing must not recommend pausing running containers."""
+    import docker_api
+
+    fake_container = MagicMock()
+    fake_container.id = "1234567890abcdef"
+    fake_container.name = "my-web-app"
+    fake_container.status = "running"
+
+    mock_docker_client = MagicMock()
+    mock_docker_client.containers.list.return_value = [fake_container]
+
+    with patch.object(docker_api, "client", mock_docker_client), \
+         patch.object(docker_api, "cached_containers", []):
+        res = client.get("/ai/recommendations", headers=AUTH_HEADER)
+        assert res.status_code == 200
+        recs = res.json()["recommendations"]
+        assert len(recs) == 1
+        assert recs[0]["recommended_action"] == "none"
+
+
+def test_essential_container_token_matching_no_false_positive():
+    """'score-service' must not match 'core', whereas 'tgmon-core' is essential."""
+    from ai import _is_essential_container
+
+    assert _is_essential_container("score-service") is False
+    assert _is_essential_container("hardcore-worker") is False
+    assert _is_essential_container("tgmon-core") is True
+    assert _is_essential_container("nginx_proxy_1") is True
+
+
+def test_noisy_series_with_low_r_squared_has_no_eta():
+    """High-variance noise with slight positive slope but low R² must not report false ETA."""
+    _seed_cpu_series([20, 75, 15, 80, 22, 78, 25, 79])
+    response = client.get("/ai/forecast?window_minutes=60&horizon_minutes=30", headers=AUTH_HEADER)
+    assert response.status_code == 200
+    cpu = response.json()["cpu"]
+    assert cpu["r_squared"] < 0.25
+    assert cpu["minutes_to_threshold"] is None

@@ -83,6 +83,12 @@ _cache_running = False
 # container_stats_sync (each does blocking Docker SDK + psutil). Keeps N97 CPU from thrashing.
 _docker_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="docker-stats")
 
+def get_cached_containers() -> list[dict]:
+    """Return a thread-safe shallow copy of the current cached containers."""
+    with _cache_lock:
+        return list(cached_containers)
+
+
 def update_docker_cache():
     global cached_containers, _cache_running, _cache_timestamp
     while _cache_running:
@@ -91,7 +97,7 @@ def update_docker_cache():
                 containers = client.containers.list(all=True)
                 futures = list(_docker_executor.map(container_stats_sync, containers))
                 with _cache_lock:
-                    cached_containers = futures
+                    cached_containers[:] = futures
                     _cache_timestamp = time.time()
         except Exception as e:
             logger.error(f"Error updating docker cache: {e}")
