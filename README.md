@@ -1,5 +1,12 @@
 # TGMon v2 — Observabilidad Móvil de Infraestructura Docker y Analítica Predictiva
 
+![Version](https://img.shields.io/badge/version-v1.2.34-blue?style=flat-square)
+![Android](https://img.shields.io/badge/Android-Kotlin%20%7C%20Compose-3DDC84?style=flat-square&logo=android&logoColor=white)
+![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.12-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Engine%20API-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Tests](https://img.shields.io/badge/Tests-93%20passed%20(43%20pytest%20%2B%2050%20JUnit)-success?style=flat-square)
+![License](https://img.shields.io/badge/License-Proprietary%20(All%20Rights%20Reserved)-red?style=flat-square)
+
 **TGMon v2 (`v1.2.34`, `VERSION_CODE=34`)** es un sistema cliente-servidor para supervisar servidores Linux con contenedores Docker desde dispositivos Android, combinando telemetría en tiempo real, administración controlada por roles y un monitor predictivo de recursos.
 
 - **Asignatura**: Programación de Vanguardia — Licenciatura en Tecnologías Informáticas (Universidad de la Ciudad de Buenos Aires, Ciclo Lectivo 2026)
@@ -21,36 +28,63 @@ El proyecto implementa una arquitectura cliente-servidor aprobada por la cátedr
    - Todos los módulos de producción residen en `server/app/` (`main.py`, `auth.py`, `ai.py`, `models.py`, `db.py`, `docker_api.py`) y **comparten una única instancia de aplicación FastAPI** ejecutada sobre Uvicorn. La separación por módulos organiza las responsabilidades internas (seguridad RBAC, telemetría del host, integración con Docker Engine, persistencia SQLite y analítica predictiva) dentro de un mismo proceso de bajo consumo.
 
 ```mermaid
-graph TD
-    subgraph Cliente ["Cliente Android (Kotlin / Jetpack Compose · v1.2.34)"]
-        UI["Pantallas: Overview, Charts, Containers, Alert History"]
-        VM["ViewModels + TgMonRepository (Failover LAN/Remoto)"]
-        Room["Room SQLite (v6)<br/>MetricHistory · ContainerCache · ContainerLog · AlertHistory"]
-        Prefs["EncryptedSharedPreferences<br/>Perfiles de Servidor y Tokens"]
-        Widget["Glance Home Screen Widget"]
+flowchart LR
+    subgraph ANDROID ["📱 Cliente Android · Kotlin & Compose"]
+        direction TB
+        UI("🖥️ UI Material 3<br/>Overview · Charts · Containers · Alerts")
+        VM("⚙️ Capa de Dominio<br/>ViewModels · Hilt · Failover LAN/WAN")
+        ROOM[("🗄️ Room DB v6<br/>Métricas · Caché · Alertas")]
+        PREFS("🔐 EncryptedPrefs<br/>AES-256 · Perfiles & Tokens")
+        WIDGET("📲 Glance Widget<br/>Home Screen")
 
         UI --> VM
-        VM --> Room
-        VM --> Prefs
-        Widget --> Room
+        VM --> ROOM
+        VM --> PREFS
+        WIDGET -.-> ROOM
     end
 
-    subgraph Backend ["Backend Python / FastAPI (Instancia Única en server/app/)"]
-        Main["main.py<br/>Rutas REST, WebSocket /ws/telemetry y Rate Limiting"]
-        Auth["auth.py<br/>Autenticación Bearer y Roles (admin / viewer)"]
-        DockerMod["docker_api.py<br/>Caché en Segundo Plano y Operaciones Docker"]
-        AIMod["ai.py + models.py<br/>Pronóstico OLS, Heurísticas y Consulta Gemini Opcional"]
-        DBMod["db.py<br/>SQLite 3 (Modo WAL · Retención 30 días)"]
-
-        Main --> Auth
-        Main --> DockerMod
-        Main --> AIMod
-        Main --> DBMod
-        AIMod --> DBMod
-        AIMod --> DockerMod
+    subgraph NET ["🔒 Transporte & Seguridad"]
+        direction TB
+        REST("🌐 REST API + SlowAPI<br/>Bearer Token · Rate Limiting")
+        WS("⚡ WebSocket /ws/telemetry<br/>Streaming Full-Duplex ~2s")
     end
 
-    VM <==>|"REST + Bearer Token<br/>WebSocket /ws/telemetry"| Main
+    subgraph SERVER ["🐍 Backend FastAPI · server/app/"]
+        direction TB
+        MAIN("🚀 main.py<br/>Router Principal & Telemetría")
+        AUTH("🛡️ auth.py<br/>RBAC: Admin vs Viewer<br/>secrets.compare_digest")
+        DOCKER("🐳 docker_api.py<br/>Hilo Caché & Ciclo de Vida<br/>/var/run/docker.sock")
+        AI("📈 ai.py + models.py<br/>Pronóstico OLS · Heurística<br/>Gemini Flash Opcional")
+        DB[("💾 db.py · SQLite 3 WAL<br/>Retención 30d · Export CSV")]
+
+        MAIN --> AUTH
+        MAIN --> DOCKER
+        MAIN --> AI
+        MAIN --> DB
+        AI -.-> DB
+        AI -.-> DOCKER
+    end
+
+    VM ==>|HTTPS / JSON| REST
+    VM <==>|Push 2s| WS
+    REST ==> MAIN
+    WS <==> MAIN
+
+    classDef client fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+    classDef storage fill:#0f172a,stroke:#818cf8,stroke-width:2px,color:#e2e8f0
+    classDef transport fill:#134e4a,stroke:#2dd4bf,stroke-width:2px,color:#f0fdfa
+    classDef backend fill:#1e1b4b,stroke:#a78bfa,stroke-width:2px,color:#f5f3ff
+    classDef aiNode fill:#3b0764,stroke:#e879f9,stroke-width:2px,color:#fae8ff
+
+    class UI,VM,PREFS,WIDGET client
+    class ROOM,DB storage
+    class REST,WS transport
+    class MAIN,AUTH,DOCKER backend
+    class AI aiNode
+
+    style ANDROID fill:#0f172a,stroke:#334155,stroke-width:1.5px,color:#38bdf8
+    style NET fill:#042f2e,stroke:#115e59,stroke-width:1.5px,color:#2dd4bf
+    style SERVER fill:#090d16,stroke:#312e81,stroke-width:1.5px,color:#a78bfa
 ```
 
 ---
@@ -89,6 +123,7 @@ graph TD
 │   ├── diagnose.sh                       # Script de diagnóstico local del servidor
 │   └── start_test.bat                    # Script de arranque local en Windows
 ├── .github/workflows/ci.yml              # Pipeline CI (pruebas Android + APK y pytest en server/)
+├── LICENSE                               # Licencia de propiedad intelectual exclusiva (Rodrigo Carme)
 ├── MINUTAS.md                            # Registro de minutas del equipo y trazabilidad ágil
 ├── version.properties                    # Fuente de versión actual (VERSION_NAME=1.2.34, VERSION_CODE=34)
 └── README.md
