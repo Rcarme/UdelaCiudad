@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.tgmon.app.data.models.ForecastResponseTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-10-29T00:42:18" hostname="SHODAN" time="0.003">
-  <properties/>
-  <testcase name="default ForecastResponse is unavailable and safe" classname="com.tgmon.app.data.models.ForecastResponseTest" time="0.0"/>
-  <testcase name="parse ForecastResponse with rising trend and ETA from JSON" classname="com.tgmon.app.data.models.ForecastResponseTest" time="0.003"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

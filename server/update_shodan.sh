@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# TGMon v2 - Script de Actualización Automática para Servidor SHODAN
-# Configura RBAC de 2 Tokens (Admin & Viewer), actualiza el backend y reinicia Docker
+# TGMon v2 - Script de Actualización y Configuración Segura para Servidor SHODAN
+# Configura credenciales RBAC (Admin y Viewer opcional), protege permisos de
+# archivos de entorno y verifica el despliegue con Docker Compose sin exponer
+# secretos en la salida de la terminal ni sobrescribir módulos de producción.
 # ==============================================================================
-set -e
+set -euo pipefail
 
 echo "=========================================================="
-echo " [TGMon v2] Iniciando actualización automática en SHODAN "
+echo " [TGMon v2] Iniciando actualización segura del servidor   "
 echo "=========================================================="
 
 # 1. Determinar directorio de la aplicación
@@ -23,246 +25,94 @@ cd "$APP_DIR"
 echo "[+] Directorio de trabajo: $APP_DIR"
 mkdir -p "$APP_DIR/app"
 
-# 2. Configurar tokens en .env.api y .env
-ADMIN_TOKEN="${TGMON_ADMIN_TOKEN:?definir TGMON_ADMIN_TOKEN (ej: openssl rand -hex 32)}"
-VIEWER_TOKEN="${TGMON_VIEWER_TOKEN:-cambiar_por_un_token_largo_y_aleatorio}"
+# 2. Validación de credenciales (rechazar valores vacíos o ejemplos conocidos)
+is_known_placeholder() {
+    local val="$1"
+    case "$val" in
+        ""|"cambiar_por_un_token_largo_y_aleatorio"|shodan_*_2026|"TU_TOKEN"|"your_token_here"|"test_secret_token")
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
 
-cat << EOF > "$APP_DIR/.env.api"
-# Tokens de Autenticación TGMon v2
+ADMIN_TOKEN="${TGMON_ADMIN_TOKEN:-}"
+VIEWER_TOKEN="${TGMON_VIEWER_TOKEN:-}"
+
+if is_known_placeholder "$ADMIN_TOKEN"; then
+    echo "[!] ERROR: TGMON_ADMIN_TOKEN no está definido o utiliza un valor de ejemplo público." >&2
+    echo "    Genere un token aleatorio (ej: openssl rand -hex 32) y expórtelo antes de ejecutar este script." >&2
+    exit 1
+fi
+
+if [ "${#ADMIN_TOKEN}" -lt 12 ]; then
+    echo "[!] ERROR: TGMON_ADMIN_TOKEN debe tener al menos 12 caracteres." >&2
+    exit 1
+fi
+
+if [ -n "$VIEWER_TOKEN" ]; then
+    if is_known_placeholder "$VIEWER_TOKEN"; then
+        echo "[!] ERROR: TGMON_VIEWER_TOKEN utiliza un valor de ejemplo público no permitido." >&2
+        echo "    Defina un token único o déjelo vacío para deshabilitar el rol viewer." >&2
+        exit 1
+    fi
+    if [ "${#VIEWER_TOKEN}" -lt 12 ]; then
+        echo "[!] ERROR: TGMON_VIEWER_TOKEN debe tener al menos 12 caracteres cuando se habilita." >&2
+        exit 1
+    fi
+    if [ "$VIEWER_TOKEN" = "$ADMIN_TOKEN" ]; then
+        echo "[!] ERROR: TGMON_VIEWER_TOKEN debe ser distinto de TGMON_ADMIN_TOKEN." >&2
+        exit 1
+    fi
+    VIEWER_ROLE_ENABLED=1
+    echo "[+] Rol ADMIN: habilitado | Rol VIEWER: habilitado"
+else
+    # Si no se proporciona TGMON_VIEWER_TOKEN, el rol viewer queda explícitamente deshabilitado
+    VIEWER_TOKEN=""
+    VIEWER_ROLE_ENABLED=0
+    echo "[+] Rol ADMIN: habilitado | Rol VIEWER: deshabilitado (sin credencial configurada)"
+fi
+
+# Preservar GEMINI_API_KEY existente si no se pasó por entorno
+EXISTING_GEMINI_KEY="${GEMINI_API_KEY:-}"
+if [ -z "$EXISTING_GEMINI_KEY" ] && [ -f "$APP_DIR/.env" ]; then
+    EXISTING_GEMINI_KEY=$(grep -E '^GEMINI_API_KEY=' "$APP_DIR/.env" | tail -n 1 | cut -d'=' -f2- || true)
+fi
+
+# 3. Escribir archivos de entorno con permisos restrictivos (0600)
+(
+    umask 077
+    cat << EOF > "$APP_DIR/.env.api"
+# Credenciales de Autenticación TGMon v2 (permisos 0600)
 TGMON_ADMIN_TOKEN=$ADMIN_TOKEN
 TGMON_VIEWER_TOKEN=$VIEWER_TOKEN
 TGMON_TOKEN=$ADMIN_TOKEN
+GEMINI_API_KEY=$EXISTING_GEMINI_KEY
 EOF
+    chmod 600 "$APP_DIR/.env.api"
+    cp -f "$APP_DIR/.env.api" "$APP_DIR/.env"
+    chmod 600 "$APP_DIR/.env"
+    cp -f "$APP_DIR/.env.api" "$APP_DIR/app/.env.api"
+    chmod 600 "$APP_DIR/app/.env.api"
+)
+echo "[+] Archivos .env y .env.api actualizados con permisos restrictivos (0600)."
 
-cp "$APP_DIR/.env.api" "$APP_DIR/.env"
-cp "$APP_DIR/.env.api" "$APP_DIR/app/.env.api" 2>/dev/null || true
-echo "[+] Tokens configurados en .env.api"
+# 4. Verificar que los módulos de producción en app/ existan sin sobrescribirlos
+REQUIRED_MODULES=("main.py" "auth.py" "ai.py" "models.py" "db.py" "docker_api.py")
+for mod in "${REQUIRED_MODULES[@]}"; do
+    if [ ! -f "$APP_DIR/app/$mod" ]; then
+        echo "[!] ERROR: Falta el módulo requerido $APP_DIR/app/$mod." >&2
+        exit 1
+    fi
+    python3 -c "import py_compile; py_compile.compile('$APP_DIR/app/$mod', doraise=True)" >/dev/null
+done
+echo "[+] Módulos de producción en app/ verificados (sintaxis OK, sin sobrescritura)."
 
-# 3. Escribir auth.py con soporte de 2 tokens (Admin y Viewer)
-write_auth_file() {
-    local target="$1"
-    cat << 'EOF' > "$target"
-import os
-import logging
-import time
-import stat
-import tempfile
-from pathlib import Path
-from fastapi import Header, HTTPException
-import secrets
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("tgmon")
-
-ROLE_ADMIN = "admin"
-ROLE_VIEWER = "viewer"
-
-try:
-    ADMIN_TOKEN = os.getenv('TGMON_ADMIN_TOKEN') or os.getenv('TGMON_TOKEN')
-    VIEWER_TOKEN = os.getenv('TGMON_VIEWER_TOKEN')
-    TOKEN = ADMIN_TOKEN
-    if not ADMIN_TOKEN and not VIEWER_TOKEN:
-        logger.error("Neither TGMON_ADMIN_TOKEN nor TGMON_TOKEN environment variable defined - server will return 503")
-except Exception as e:
-    logger.error(f"Failed to load tokens: {e}")
-    ADMIN_TOKEN = None
-    VIEWER_TOKEN = None
-    TOKEN = None
-
-def _get_lock_file_path() -> Path:
-    override = os.getenv("TGMON_TOKEN_LOCK_FILE")
-    if override:
-        return Path(override)
-    xdg = os.getenv("XDG_CACHE_HOME")
-    if xdg:
-        base = Path(xdg) / "tgmon"
-    else:
-        try:
-            base = Path.home() / ".cache" / "tgmon"
-        except Exception:
-            base = Path(tempfile.gettempdir()) / f"tgmon-{os.getuid() if hasattr(os, 'getuid') else 'cache'}"
-    try:
-        base.mkdir(parents=True, exist_ok=True)
-        try:
-            os.chmod(base, 0o700)
-        except Exception:
-            pass
-    except Exception as e:
-        logger.warning(f"Failed to create secure cache dir {base}: {e}")
-    return base / "token_invalidated.lock"
-
-_LEGACY_LOCK_FILE = Path(tempfile.gettempdir()) / "tgmon_token_invalidated.lock"
-
-def _is_token_invalidated_file() -> bool:
-    secure = _get_lock_file_path()
-    return secure.exists()
-
-def _set_token_invalidated():
-    lock_file = _get_lock_file_path()
-    try:
-        lock_file.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            os.chmod(lock_file.parent, 0o700)
-        except Exception:
-            pass
-        try:
-            fd = os.open(str(lock_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            os.close(fd)
-        except Exception:
-            lock_file.touch(exist_ok=True)
-        try:
-            os.chmod(lock_file, 0o600)
-        except Exception:
-            pass
-        logger.warning(f"Token invalidated (secure lock file created at {lock_file})")
-    except Exception as e:
-        logger.error(f"Failed to create token lock file: {e}")
-
-def _clear_token_invalidated():
-    for p in (_get_lock_file_path(), _LEGACY_LOCK_FILE):
-        try:
-            if p.exists():
-                p.unlink()
-                logger.info(f"Token re-enabled (lock file removed at {p})")
-        except Exception as e:
-            logger.error(f"Failed to remove token lock file {p}: {e}")
-
-def invalidate_token():
-    _set_token_invalidated()
-
-def is_token_valid() -> bool:
-    if _is_token_invalidated_file():
-        logger.warning("Token is invalidated (lock file exists)")
-        return False
-    return True
-
-def get_token_role(token: str | None) -> str | None:
-    if not token or not isinstance(token, str):
-        return None
-    admin_tok = os.getenv('TGMON_ADMIN_TOKEN') or os.getenv('TGMON_TOKEN') or ADMIN_TOKEN
-    viewer_tok = os.getenv('TGMON_VIEWER_TOKEN') or VIEWER_TOKEN
-
-    if admin_tok and secrets.compare_digest(token, admin_tok):
-        return ROLE_ADMIN
-    if viewer_tok and secrets.compare_digest(token, viewer_tok):
-        return ROLE_VIEWER
-    return None
-
-def check_auth(authorization: str | None, require_fresh: bool = True, required_role: str = ROLE_VIEWER) -> str:
-    admin_tok = os.getenv('TGMON_ADMIN_TOKEN') or os.getenv('TGMON_TOKEN') or ADMIN_TOKEN
-    viewer_tok = os.getenv('TGMON_VIEWER_TOKEN') or VIEWER_TOKEN
-
-    if not admin_tok and not viewer_tok:
-        logger.warning("Authentication rejected: TGMON_TOKEN / TGMON_ADMIN_TOKEN not configured")
-        raise HTTPException(status_code=503, detail='Server not configured: TGMON_TOKEN not defined')
-    
-    if not authorization or not authorization.startswith('Bearer '):
-        logger.warning("Authentication failed: missing or invalid Authorization header")
-        raise HTTPException(status_code=401, detail='Unauthorized')
-    
-    token = authorization.split(' ', 1)[1]
-    role = get_token_role(token)
-    if not role:
-        logger.warning("Authentication failed: invalid token")
-        raise HTTPException(status_code=401, detail='Unauthorized')
-    
-    if require_fresh and not is_token_valid():
-        logger.warning("Authentication rejected: token has been invalidated")
-        raise HTTPException(status_code=401, detail='Token invalidated, please re-authenticate')
-    
-    if required_role == ROLE_ADMIN and role != ROLE_ADMIN:
-        logger.warning(f"Forbidden: Action requires role {ROLE_ADMIN}, but token role is {role}")
-        raise HTTPException(status_code=403, detail='Forbidden: Admin privileges required')
-    
-    return role
-
-def reenable_token():
-    _clear_token_invalidated()
-
-def cleanup_token_lock():
-    for lock_file in (_get_lock_file_path(), _LEGACY_LOCK_FILE):
-        try:
-            if lock_file.exists():
-                file_age = time.time() - lock_file.stat().st_mtime
-                if file_age > 86400:
-                    try:
-                        lock_file.unlink()
-                        logger.info(f"Removed stale token lock file at {lock_file}")
-                    except Exception as e:
-                        logger.error(f"Failed to remove stale lock {lock_file}: {e}")
-        except Exception:
-            pass
-
-_TOKEN_LOCK_FILE = str(_get_lock_file_path())
-EOF
-}
-
-# Write only to app/auth.py (single source of truth)
-write_auth_file "$APP_DIR/app/auth.py"
-echo "[+] auth.py actualizado con soporte de 2 tokens y RBAC"
-
-# 4. Actualizar endpoints en main.py y docker_api.py mediante Python
-python3 - << 'PYEOF'
-import os, re
-
-def patch_file(path, patches):
-    if not os.path.exists(path):
-        return
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
-    for pattern, repl in patches:
-        content = re.sub(pattern, repl, content)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
-    print(f"[+] Archivo parcheado: {path}")
-
-# Parches para main.py
-main_patches = [
-    # Importar ROLE_ADMIN y get_token_role
-    (r"from auth import check_auth, TOKEN, invalidate_token, reenable_token, is_token_valid, cleanup_token_lock(?!, ROLE_ADMIN)",
-     r"from auth import check_auth, TOKEN, invalidate_token, reenable_token, is_token_valid, cleanup_token_lock, ROLE_ADMIN, get_token_role"),
-    # /auth/invalidate requiere admin
-    (r"async def invalidate_auth_endpoint\(authorization: str \| None = Header\(None\)\):\s*check_auth\(authorization\)",
-     r"async def invalidate_auth_endpoint(authorization: str | None = Header(None)):\n    check_auth(authorization, required_role=ROLE_ADMIN)"),
-    # /auth/reenable requiere admin
-    (r"async def reenable_auth_endpoint\(authorization: str \| None = Header\(None\)\):\s*check_auth\(authorization, require_fresh=False\)",
-     r"async def reenable_auth_endpoint(authorization: str | None = Header(None)):\n    check_auth(authorization, require_fresh=False, required_role=ROLE_ADMIN)"),
-    # /auth/verify devuelve role
-    (r"@app\.get\('/auth/verify'\)\s*async def verify_auth\(authorization: str \| None = Header\(None\)\):\s*check_auth\(authorization\)\s*return \{[\"']valid[\"']:\s*True\}",
-     r"@app.get('/auth/verify')\nasync def verify_auth(authorization: str | None = Header(None)):\n    role = check_auth(authorization)\n    return {\"valid\": True, \"role\": role}"),
-    # WebSocket auth verifica role y envía role en auth_ok
-    (r"if auth_msg\.get\(\"type\"\) != \"auth\" or received_token != TOKEN:",
-     r"role = get_token_role(received_token)\n        if auth_msg.get(\"type\") != \"auth\" or not role:"),
-    (r"await websocket\.send_text\(json\.dumps\(\{\"type\": \"auth_ok\"\}\)\)",
-     r"await websocket.send_text(json.dumps({\"type\": \"auth_ok\", \"role\": role}))")
-]
-
-for p in ["./app/main.py"]:
-    patch_file(p, main_patches)
-
-# Parches para docker_api.py
-docker_patches = [
-    (r"from auth import check_auth(?!, ROLE_ADMIN)", r"from auth import check_auth, ROLE_ADMIN"),
-    (r"@router\.post\('/containers/\{container_id\}/restart'\)\s*async def restart_container\(\s*container_id: str,\s*request: Request,\s*authorization: str \| None = Header\(None\)\s*\):\s*check_auth\(authorization\)",
-     r"@router.post('/containers/{container_id}/restart')\nasync def restart_container(\n    container_id: str,\n    request: Request,\n    authorization: str | None = Header(None)\n):\n    check_auth(authorization, required_role=ROLE_ADMIN)"),
-    (r"@router\.post\('/containers/\{container_id\}/stop'\)\s*async def stop_container\(\s*container_id: str,\s*request: Request,\s*authorization: str \| None = Header\(None\)\s*\):\s*check_auth\(authorization\)",
-     r"@router.post('/containers/{container_id}/stop')\nasync def stop_container(\n    container_id: str,\n    request: Request,\n    authorization: str | None = Header(None)\n):\n    check_auth(authorization, required_role=ROLE_ADMIN)"),
-    (r"@router\.post\('/containers/\{container_id\}/start'\)\s*async def start_container\(\s*container_id: str,\s*request: Request,\s*authorization: str \| None = Header\(None\)\s*\):\s*check_auth\(authorization\)",
-     r"@router.post('/containers/{container_id}/start')\nasync def start_container(\n    container_id: str,\n    request: Request,\n    authorization: str | None = Header(None)\n):\n    check_auth(authorization, required_role=ROLE_ADMIN)"),
-    (r"@router\.delete\('/containers/\{container_id\}'\)\s*async def remove_container\(\s*container_id: str,\s*request: Request,\s*force: bool = False,\s*authorization: str \| None = Header\(None\)\s*\):\s*check_auth\(authorization\)",
-     r"@router.delete('/containers/{container_id}')\nasync def remove_container(\n    container_id: str,\n    request: Request,\n    force: bool = False,\n    authorization: str | None = Header(None)\n):\n    check_auth(authorization, required_role=ROLE_ADMIN)"),
-    (r"@router\.post\('/containers/\{container_id\}/pause'\)\s*async def pause_container\(\s*container_id: str,\s*request: Request,\s*authorization: str \| None = Header\(None\)\s*\):\s*check_auth\(authorization\)",
-     r"@router.post('/containers/{container_id}/pause')\nasync def pause_container(\n    container_id: str,\n    request: Request,\n    authorization: str | None = Header(None)\n):\n    check_auth(authorization, required_role=ROLE_ADMIN)"),
-    (r"@router\.post\('/containers/\{container_id\}/unpause'\)\s*async def unpause_container\(\s*container_id: str,\s*request: Request,\s*authorization: str \| None = Header\(None\)\s*\):\s*check_auth\(authorization\)",
-     r"@router.post('/containers/{container_id}/unpause')\nasync def unpause_container(\n    container_id: str,\n    request: Request,\n    authorization: str | None = Header(None)\n):\n    check_auth(authorization, required_role=ROLE_ADMIN)")
-]
-
-for p in ["./app/docker_api.py"]:
-    patch_file(p, docker_patches)
-PYEOF
-
-# 5. Escribir docker-compose.yml con inyección directa de tokens en environment
-cat << 'EOF' > "$APP_DIR/docker-compose.yml"
+# 5. Asegurar docker-compose.yml compatible si no existe
+if [ ! -f "$APP_DIR/docker-compose.yml" ]; then
+    cat << 'EOF' > "$APP_DIR/docker-compose.yml"
 services:
   tgmon:
     build: .
@@ -271,18 +121,19 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # 1. Código en vivo
       - ./app:/app/app
-      # 2. Permiso para hablar con Docker
       - /var/run/docker.sock:/var/run/docker.sock
-      # 3. Lectura de composes
       - /home/comstock/docker:/home/comstock/docker:ro
+      - /media:/media:ro
+      - /mnt:/mnt:ro
+      - /run/media:/run/media:ro
     environment:
       - TZ=America/Argentina/Buenos_Aires
       - COMPOSE_PATH=/home/comstock/docker/media-stack/docker-compose.yml
       - TGMON_TOKEN=${TGMON_TOKEN:-}
       - TGMON_ADMIN_TOKEN=${TGMON_ADMIN_TOKEN:?definir TGMON_ADMIN_TOKEN}
       - TGMON_VIEWER_TOKEN=${TGMON_VIEWER_TOKEN:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     networks:
       - homelab
 
@@ -290,52 +141,67 @@ networks:
   homelab:
     external: true
 EOF
-echo "[+] docker-compose.yml actualizado con variables de entorno inyectadas"
+    echo "[+] docker-compose.yml generado."
+else
+    echo "[+] docker-compose.yml existente conservado."
+fi
 
-# 6. Reiniciar contenedores con Docker Compose
-echo "[+] Reiniciando contenedor tgmon..."
+# 6. Reiniciar contenedor con Docker Compose
+echo "[+] Reiniciando contenedor tgmon con Docker Compose..."
 docker compose down || true
 docker compose up -d --build
 
 echo "[+] Esperando 3 segundos a que uvicorn inicialice..."
 sleep 3
 
-# 7. Diagnóstico y Verificación Automatizada
+# 7. Verificación automatizada sin imprimir secretos en consola ni en lista de procesos
 echo "=========================================================="
 echo "          VERIFICACIÓN AUTOMATIZADA DE ACCESO             "
 echo "=========================================================="
 
-echo "[-] Variables en el contenedor:"
-docker compose exec tgmon env | grep TOKEN || true
+echo "[-] Estado de variables en el contenedor (sin exponer valores):"
+docker compose exec -T tgmon python3 -c "
+import os
+admin_set = bool(os.getenv('TGMON_ADMIN_TOKEN') or os.getenv('TGMON_TOKEN'))
+viewer_set = bool(os.getenv('TGMON_VIEWER_TOKEN'))
+print(f'    TGMON_ADMIN_TOKEN configurado: {admin_set}')
+print(f'    TGMON_VIEWER_TOKEN configurado: {viewer_set}')
+" || true
 
-echo -e "\n[-] Test 1: Verificar token ADMIN:"
-ADMIN_RES=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8000/auth/verify || echo "ERR")
+echo ""
+echo "[-] Test 1: Verificar acceso con rol ADMIN (/auth/verify):"
+ADMIN_RES=$(printf 'header = "Authorization: Bearer %s"\n' "$ADMIN_TOKEN" | curl -s -o /dev/null -w "%{http_code}" -K - http://localhost:8000/auth/verify || echo "ERR")
 if [ "$ADMIN_RES" = "200" ]; then
-    echo "    >>> OK! HTTP 200 - Token Admin verificado correctamente."
-    curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:8000/auth/verify
-    echo ""
+    echo "    >>> OK: HTTP 200 (Rol Admin verificado correctamente)."
 else
-    echo "    >>> ERROR: HTTP $ADMIN_RES al verificar Admin."
+    echo "    >>> ERROR: HTTP $ADMIN_RES al verificar rol Admin."
 fi
 
-echo -e "\n[-] Test 2: Verificar token VIEWER:"
-VIEWER_RES=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $VIEWER_TOKEN" http://localhost:8000/auth/verify || echo "ERR")
-if [ "$VIEWER_RES" = "200" ]; then
-    echo "    >>> OK! HTTP 200 - Token Viewer verificado correctamente."
-    curl -s -H "Authorization: Bearer $VIEWER_TOKEN" http://localhost:8000/auth/verify
+if [ "$VIEWER_ROLE_ENABLED" -eq 1 ]; then
     echo ""
+    echo "[-] Test 2: Verificar acceso con rol VIEWER (/auth/verify):"
+    VIEWER_RES=$(printf 'header = "Authorization: Bearer %s"\n' "$VIEWER_TOKEN" | curl -s -o /dev/null -w "%{http_code}" -K - http://localhost:8000/auth/verify || echo "ERR")
+    if [ "$VIEWER_RES" = "200" ]; then
+        echo "    >>> OK: HTTP 200 (Rol Viewer verificado correctamente)."
+    else
+        echo "    >>> ERROR: HTTP $VIEWER_RES al verificar rol Viewer."
+    fi
+
+    echo ""
+    echo "[-] Test 3: Verificar bloqueo de mutación para rol VIEWER (debe devolver HTTP 403):"
+    FORBIDDEN_RES=$(printf 'header = "Authorization: Bearer %s"\n' "$VIEWER_TOKEN" | curl -s -o /dev/null -w "%{http_code}" -X POST -K - http://localhost:8000/docker/containers/tgmon/restart || echo "ERR")
+    if [ "$FORBIDDEN_RES" = "403" ]; then
+        echo "    >>> OK: HTTP 403 Forbidden (El rol Viewer no puede ejecutar mutaciones)."
+    else
+        echo "    >>> Estado obtenido: HTTP $FORBIDDEN_RES"
+    fi
 else
-    echo "    >>> ERROR: HTTP $VIEWER_RES al verificar Viewer."
+    echo ""
+    echo "[-] Test 2/3: Rol VIEWER deshabilitado; se omiten pruebas de credencial viewer."
 fi
 
-echo -e "\n[-] Test 3: Probar permiso mutante con Viewer (debe dar 403 Forbidden):"
-FORBIDDEN_RES=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer $VIEWER_TOKEN" http://localhost:8000/docker/containers/tgmon/restart || echo "ERR")
-if [ "$FORBIDDEN_RES" = "403" ]; then
-    echo "    >>> OK! HTTP 403 Forbidden - El token Viewer está correctamente protegido de acciones destructivas."
-else
-    echo "    >>> Estado obtenido: HTTP $FORBIDDEN_RES"
-fi
+unset ADMIN_TOKEN VIEWER_TOKEN EXISTING_GEMINI_KEY
 
 echo "=========================================================="
-echo " [TGMon v2] ¡Servidor listo y funcionando correctamente! "
+echo " [TGMon v2] Actualización y verificación finalizadas      "
 echo "=========================================================="

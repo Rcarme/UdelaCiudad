@@ -27,3 +27,13 @@ __pycache__/
 deploy_shodan/
 tmp/
 Agregado/
+
+# Documentación extensa y artefactos de entrega
+/docs/
+/deliverables/
+/slide_output/
+
+# Documentos generados en la raíz
+/*.docx
+/*.pdf
+/*.pptx

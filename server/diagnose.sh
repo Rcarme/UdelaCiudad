@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # TgMon Server Diagnostic Script
 # Run: bash diagnose.sh
 
@@ -25,8 +25,8 @@ echo ""
 # 3. Activate and check packages
 echo "[3/10] Checking packages..."
 source venv/bin/activate
-for pkg in fastapi uvicorn psutil docker python-dotenv websockets; do
-    version=$(pip show $pkg 2>/dev/null | grep Version | awk '{print $2}')
+for pkg in fastapi uvicorn psutil docker python-dotenv websockets slowapi; do
+    version=$(pip show "$pkg" 2>/dev/null | grep Version | awk '{print $2}')
     if [ -n "$version" ]; then
         echo "  ✅ $pkg $version"
     else
@@ -35,23 +35,29 @@ for pkg in fastapi uvicorn psutil docker python-dotenv websockets; do
 done
 echo ""
 
-# 4. Check .env.api
+# 4. Check .env.api / app/.env.api
 echo "[4/10] Token configuration..."
-if [ -f ".env.api" ]; then
-    # SECURITY: never log full token; show only length + first 4 chars redacted
-    TOKEN=$(grep TGMON_TOKEN .env.api | cut -d'=' -f2 | tr -d '[:space:]')
-    echo "  ✅ .env.api found"
+ENV_FILE=""
+if [ -f "app/.env.api" ]; then
+    ENV_FILE="app/.env.api"
+elif [ -f ".env.api" ]; then
+    ENV_FILE=".env.api"
+elif [ -f ".env" ]; then
+    ENV_FILE=".env"
+fi
+
+if [ -n "$ENV_FILE" ]; then
+    # SECURITY: never print token value, prefix, or length
+    TOKEN=$(grep -E '^(TGMON_ADMIN_TOKEN|TGMON_TOKEN)=' "$ENV_FILE" | head -n 1 | cut -d'=' -f2- | tr -d '[:space:]')
+    echo "  ✅ $ENV_FILE found"
     if [ -z "$TOKEN" ]; then
-        echo "  ❌ Token is EMPTY"
+        echo "  ❌ Admin token is EMPTY"
     else
-        # Redacted: show length and prefix only (e.g., abcd****)
-        _prefix=$(echo "$TOKEN" | cut -c1-4)
-        echo "  ✅ Token set (length ${#TOKEN}, prefix ${_prefix}****, redacted for security)"
-        unset _prefix
+        echo "  ✅ Admin token is configured (value hidden for security)"
     fi
     unset TOKEN
 else
-    echo "  ❌ .env.api NOT FOUND"
+    echo "  ❌ .env.api / .env NOT FOUND"
 fi
 echo ""
 
@@ -59,7 +65,6 @@ echo ""
 echo "[5/10] Server files..."
 for f in app/main.py app/auth.py app/db.py app/docker_api.py app/ai.py app/models.py; do
     if [ -f "$f" ]; then
-        # Check for syntax errors
         python3 -c "import py_compile; py_compile.compile('$f', doraise=True)" 2>/dev/null
         if [ $? -eq 0 ]; then
             echo "  ✅ $f (syntax OK)"
@@ -74,7 +79,11 @@ echo ""
 
 # 6. Check database
 echo "[6/10] Database..."
-if [ -f "metrics.db" ]; then
+if [ -f "app/metrics.db" ]; then
+    echo "  ✅ app/metrics.db exists"
+    echo "  Columns:"
+    sqlite3 app/metrics.db ".schema metrics" 2>/dev/null | sed 's/^/    /'
+elif [ -f "metrics.db" ]; then
     echo "  ✅ metrics.db exists"
     echo "  Columns:"
     sqlite3 metrics.db ".schema metrics" 2>/dev/null | sed 's/^/    /'
@@ -104,14 +113,14 @@ else
 fi
 echo ""
 
-# 9. Try starting server briefly
-echo "[9/10] Testing server startup..."
+# 9. Try starting server modules briefly
+echo "[9/10] Testing server modules..."
 timeout 5 python3 -c "
 import sys
 sys.path.insert(0, './app')
 try:
-    from auth import TOKEN
-    print(f'  ✅ Auth module loaded, token length: {len(TOKEN)}')
+    from auth import ADMIN_TOKEN, VIEWER_TOKEN
+    print(f'  ✅ Auth module loaded (admin configured: {bool(ADMIN_TOKEN)}, viewer configured: {bool(VIEWER_TOKEN)})')
 except Exception as e:
     print(f'  ❌ Auth module failed: {e}')
 
@@ -130,20 +139,13 @@ ip -4 addr show | grep -E "inet " | sed 's/^/  /'
 echo ""
 
 echo "=========================================="
-echo "  Quick Fix Commands:"
+echo "  Quick Commands (from server/):"
 echo "=========================================="
 echo ""
-echo "  # Kill old server:"
-echo "  kill \$(lsof -t -i:8000) 2>/dev/null"
-echo ""
-echo "  # Fix DB schema (if needed):"
-echo "  sqlite3 metrics.db \"ALTER TABLE metrics ADD COLUMN memory_percent REAL;\" 2>/dev/null"
-echo "  sqlite3 metrics.db \"ALTER TABLE metrics ADD COLUMN disk_total_gb REAL;\" 2>/dev/null"
-echo ""
-echo "  # Start server:"
+echo "  # Start server locally:"
 echo "  source venv/bin/activate"
-echo "  uvicorn --app-dir app main:app --host 0.0.0.0 --port 8000"
+echo "  uvicorn --app-dir app main:app --host 127.0.0.1 --port 8000"
 echo ""
-echo "  # Test:"
-echo "  curl http://localhost:8000/health -H \"Authorization: Bearer TU_TOKEN\""
+echo "  # Run tests:"
+echo "  pytest tests/test_api.py -v"
 echo ""
