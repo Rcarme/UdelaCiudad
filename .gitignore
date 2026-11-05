@@ -9,8 +9,18 @@
 .cxx
 local.properties
 
+# Firma de la app, claves y credenciales (nunca commitear)
+keystore.properties
+*.jks
+*.keystore
+google-services.json
+*.pem
+*.key
+
 # Server secrets, virtualenvs, cache and SQLite databases
 .env
+.env.*
+!.env.example
 .env.api
 venv/
 .audit-venv/

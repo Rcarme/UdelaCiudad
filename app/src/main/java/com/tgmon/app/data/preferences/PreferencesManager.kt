@@ -96,34 +96,8 @@ class PreferencesManager(context: Context) {
         try {
             migrateOldConfig()
             loadServersToCache()
-            ensureDefaultServerIfEmpty()
         } catch (e: Exception) {
             Log.e(TAG, "Initialization error", e)
-        }
-    }
-
-    /**
-     * Seed default local server so evaluator doesn't need manual typing.
-     * Uses Android Emulator localhost loopback (10.0.2.2) and the default academic token.
-     */
-    private fun ensureDefaultServerIfEmpty() {
-        try {
-            val servers = getAllServersConfigs()
-            if (servers.isEmpty()) {
-                val defaultServer = ServerConfig(
-                    name = "Local Server",
-                    localUrl = "http://10.0.2.2:8000",
-                    remoteUrl = "http://10.0.2.2:8000",
-                    token = "student_secure_token_123",
-                    isDefault = true
-                )
-                saveServerConfig(defaultServer)
-                // setDefaultServerId already handled by saveAllServersConfigs + explicit set
-                setDefaultServerId(defaultServer.id)
-                Log.i(TAG, "Created default local server config for first-run")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error ensuring default server", e)
         }
     }
 

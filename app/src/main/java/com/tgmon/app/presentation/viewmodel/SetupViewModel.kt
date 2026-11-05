@@ -14,7 +14,7 @@ data class SetupUIState(
     val serverName: String = "Local Server",
     val localUrl: String = "http://10.0.2.2:8000",
     val remoteUrl: String = "http://10.0.2.2:8000",
-    val token: String = "student_secure_token_123",
+    val token: String = "",
     val isLoading: Boolean = false,
     val error: String? = null,
     val isSuccess: Boolean = false

@@ -22,35 +22,6 @@ class TgMonApplication : Application(), Configuration.Provider {
         super.onCreate()
         setupTokenInvalidationCallback()
         verifySecureStorage()
-        seedDefaultServerIfNeeded()
-    }
-
-    private fun seedDefaultServerIfNeeded() {
-        try {
-            val prefs = PreferencesManager(this)
-            val servers = prefs.getAllServers()
-            if (servers.isEmpty() || !prefs.isConfigured()) {
-                val alreadyHasDefault = servers.any {
-                    it.localUrl == "http://10.0.2.2:8000" &&
-                    it.remoteUrl == "http://10.0.2.2:8000" &&
-                    it.token == "student_secure_token_123"
-                }
-                if (!alreadyHasDefault) {
-                    val defaultServer = com.tgmon.app.data.preferences.ServerConfig(
-                        name = "Local Server",
-                        localUrl = "http://10.0.2.2:8000",
-                        remoteUrl = "http://10.0.2.2:8000",
-                        token = "student_secure_token_123",
-                        isDefault = true
-                    )
-                    prefs.saveServerConfig(defaultServer)
-                    prefs.setDefaultServerId(defaultServer.id)
-                    android.util.Log.d("TgMon", "Seeded default local server: ${defaultServer.id}")
-                }
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("TgMon", "Failed to seed default server: ${e.message}")
-        }
     }
 
     private fun setupTokenInvalidationCallback() {
