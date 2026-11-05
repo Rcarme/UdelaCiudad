@@ -45,63 +45,64 @@ cd .. && ./gradlew testDebugUnitTest assembleDebug # Ejecutar pruebas unitarias 
    - Los módulos de producción residen en el paquete `server/app/` (`main.py`, `auth.py`, `ai.py`, `models.py`, `db.py`, `docker_api.py`) y comparten una única instancia FastAPI sobre Uvicorn.
 
 ```mermaid
-flowchart LR
-    subgraph ANDROID ["📱 Cliente Android · Kotlin & Compose"]
-        direction TB
-        UI("🖥️ UI Material 3<br/>Overview · Charts · Containers · Alerts")
-        VM("⚙️ Capa de Dominio<br/>ViewModels · Hilt · Failover LAN/WAN")
-        ROOM[("🗄️ Room DB v6<br/>Métricas · Caché · Alertas")]
-        PREFS("🔐 EncryptedPrefs<br/>AES-256 · Perfiles & Tokens")
-        WIDGET("📲 Glance Widget<br/>Home Screen")
-
+%%{init: {"flowchart": {"htmlLabels": false, "curve": "basis", "nodeSpacing": 36, "rankSpacing": 44, "padding": 14}}}%%
+flowchart TB
+    subgraph ANDROID ["CLIENTE ANDROID  ·  Kotlin + Jetpack Compose"]
+        direction LR
+        UI("UI Material 3<br/>Overview · Charts<br/>Containers · Alerts")
+        VM("Capa de dominio<br/>ViewModels + Hilt<br/>Failover LAN / WAN")
+        ROOM[("Room DB v6<br/>Métricas · Caché<br/>Alertas")]
+        PREFS("EncryptedPrefs<br/>AES-256<br/>Perfiles y tokens")
+        WIDGET("Widget Glance<br/>Pantalla de inicio")
         UI --> VM
         VM --> ROOM
         VM --> PREFS
         WIDGET -.-> ROOM
     end
 
-    subgraph NET ["🔒 Transporte & Seguridad"]
-        direction TB
-        REST("🌐 REST API + SlowAPI<br/>Bearer Token · Rate Limiting")
-        WS("⚡ WebSocket /ws/telemetry<br/>Streaming Full-Duplex ~2s")
+    subgraph NET ["TRANSPORTE Y SEGURIDAD"]
+        direction LR
+        REST("REST sobre HTTPS<br/>JSON · Bearer token<br/>Rate limit (SlowAPI)")
+        WS("WebSocket /ws/telemetry<br/>Streaming full-duplex<br/>Push cada ~2 s")
+        REST ~~~ WS
     end
 
-    subgraph SERVER ["🐍 Backend FastAPI · server/app/"]
+    subgraph SERVER ["BACKEND  ·  FastAPI  ·  server/app/"]
         direction TB
-        MAIN("🚀 main.py<br/>Router Principal & Telemetría")
-        AUTH("🛡️ auth.py<br/>RBAC: Admin vs Viewer<br/>secrets.compare_digest UTF-8")
-        DOCKER("🐳 docker_api.py<br/>Hilo Caché & Ciclo de Vida<br/>/var/run/docker.sock")
-        AI("📈 ai.py + models.py<br/>Pronóstico OLS (t-Student)<br/>Heurística & Gemini Opcional")
-        DB[("💾 db.py · SQLite 3 WAL<br/>Retención 30d · Export CSV")]
-
+        MAIN("main.py<br/>Router y telemetría")
+        AUTH("auth.py<br/>RBAC Admin / Viewer<br/>compare_digest")
+        AI("ai.py + models.py<br/>Pronóstico OLS<br/>Heurística + Gemini opc.")
+        DOCKER("docker_api.py<br/>Caché y ciclo de vida<br/>docker.sock")
+        DB[("db.py<br/>SQLite WAL<br/>Retención 30 d")]
         MAIN --> AUTH
-        MAIN --> DOCKER
         MAIN --> AI
+        MAIN --> DOCKER
         MAIN --> DB
-        AI -.-> DB
-        AI -.-> DOCKER
     end
 
-    VM ==>|HTTPS / JSON| REST
-    VM <==>|Push 2s| WS
-    REST ==> MAIN
-    WS <==> MAIN
+    ANDROID <==> NET
+    NET <==> SERVER
 
-    classDef client fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-    classDef storage fill:#0f172a,stroke:#818cf8,stroke-width:2px,color:#e2e8f0
-    classDef transport fill:#134e4a,stroke:#2dd4bf,stroke-width:2px,color:#f0fdfa
-    classDef backend fill:#1e1b4b,stroke:#a78bfa,stroke-width:2px,color:#f5f3ff
-    classDef aiNode fill:#3b0764,stroke:#e879f9,stroke-width:2px,color:#fae8ff
+    classDef client fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#0f172a
+    classDef storage fill:#e0e7ff,stroke:#4f46e5,stroke-width:2px,color:#0f172a
+    classDef backend fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#0f172a
+    classDef secure fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#0f172a
+    classDef aiNode fill:#fae8ff,stroke:#c026d3,stroke-width:2px,color:#0f172a
+    classDef transport fill:#ccfbf1,stroke:#0d9488,stroke-width:2px,color:#0f172a
 
     class UI,VM,PREFS,WIDGET client
     class ROOM,DB storage
-    class REST,WS transport
-    class MAIN,AUTH,DOCKER backend
+    class MAIN,DOCKER backend
+    class AUTH secure
     class AI aiNode
+    class REST,WS transport
 
-    style ANDROID fill:#0f172a,stroke:#334155,stroke-width:1.5px,color:#38bdf8
-    style NET fill:#042f2e,stroke:#115e59,stroke-width:1.5px,color:#2dd4bf
-    style SERVER fill:#090d16,stroke:#312e81,stroke-width:1.5px,color:#a78bfa
+    style ANDROID fill:none,stroke:#2563eb,stroke-width:2px,stroke-dasharray:6 4,color:#3b82f6
+    style NET fill:none,stroke:#0d9488,stroke-width:2px,stroke-dasharray:6 4,color:#14b8a6
+    style SERVER fill:none,stroke:#7c3aed,stroke-width:2px,stroke-dasharray:6 4,color:#8b5cf6
+
+    linkStyle 9 stroke:#0d9488,stroke-width:3px
+    linkStyle 10 stroke:#0d9488,stroke-width:3px
 ```
 
 ---
