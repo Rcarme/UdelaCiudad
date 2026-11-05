@@ -74,30 +74,8 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Seed default local server if none configured (idempotent, no duplicate)
-        try {
-            val servers = preferencesManager.getAllServers()
-            val hasDefault = servers.any {
-                it.localUrl == "http://10.0.2.2:8000" &&
-                it.remoteUrl == "http://10.0.2.2:8000" &&
-                it.token == "student_secure_token_123"
-            }
-            if ((servers.isEmpty() || !preferencesManager.isConfigured()) && !hasDefault) {
-                val defaultServer = com.tgmon.app.data.preferences.ServerConfig(
-                    name = "Local Server",
-                    localUrl = "http://10.0.2.2:8000",
-                    remoteUrl = "http://10.0.2.2:8000",
-                    token = "student_secure_token_123",
-                    isDefault = true
-                )
-                preferencesManager.saveServerConfig(defaultServer)
-                preferencesManager.setDefaultServerId(defaultServer.id)
-                android.util.Log.d("TgMon", "MainActivity seeded default local server: ${defaultServer.id}")
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("TgMon", "Failed to seed default in MainActivity: ${e.message}")
-        }
-
+        // No se siembra ningun servidor ni token por defecto: sin configuracion
+        // el usuario pasa por SetupScreen y carga su propia URL y token.
         val intentForceSetup = intent?.getBooleanExtra("force_setup", false) == true
         val isConfigured = preferencesManager.isConfigured() && !intentForceSetup
 

@@ -5,7 +5,7 @@
 - **Docente**: Ing. Alejandro Vázquez
 - **Equipo de Desarrollo**:
   - **Rodrigo Carme** (`@Rcarme`) — Arquitectura, seguridad por roles (RBAC), telemetría, pronóstico OLS (`/ai/forecast`), integración opcional con IA y despliegue en `Shodan`.
-  - **Luis Alberto Quispe** (`luisalbertoq@gmail.com`) — Co-diseño inicial cliente-servidor, persistencia SQLite/Room, telemetría base y estructura inicial de Android.
+  - **Luis Alberto Quispe** — Co-diseño inicial cliente-servidor, persistencia SQLite/Room, telemetría base y estructura inicial de Android.
   - **Roberto Carlos Barragán** (`Roberto`) — Modelos Pydantic, lógica heurística y endpoints Python del módulo predictivo (`server/app/ai.py`, `server/app/models.py`).
   - **Gastón Joel Leppen** (`Gaston Joel`) — Componentes de interfaz de IA en Android (`AIPredictionCard`, `AIRecommendationsCard`), estados en ViewModels y consumo Retrofit.
 - **Tablero de Issues y Milestones en GitHub**: [`https://github.com/Rcarme/UdelaCiudad/issues`](https://github.com/Rcarme/UdelaCiudad/issues)

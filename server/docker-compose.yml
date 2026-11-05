@@ -4,7 +4,9 @@ services:
     container_name: tgmon
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      # Por defecto escucha en todas las interfaces (igual que antes). Para no exponerlo
+      # fuera de tu red, definir TGMON_BIND_ADDR con la IP de LAN o de Tailscale del server.
+      - "${TGMON_BIND_ADDR:-0.0.0.0}:8000:8000"
     volumes:
       # 1. Código en vivo (te permite editar main.py y ver los cambios al reiniciar el contenedor)
       - ./app:/app/app
